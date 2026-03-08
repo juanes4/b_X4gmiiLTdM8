@@ -1,5 +1,5 @@
-from domain.interfaces import IGestionJugadores
-from domain.entities import Player
+from ..domain.interfaces import IGestionJugadores
+from ..domain.entities import Player
 
 class GestionJugadores(IGestionJugadores):
     def __init__(self, bd):

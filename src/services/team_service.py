@@ -1,4 +1,5 @@
-from domain import IGestionEquipos, Team
+from ..domain.interfaces import IGestionEquipos
+from ..domain.entities import Team
 
 class GestionEquipos(IGestionEquipos):
     def __init__(self, bd):

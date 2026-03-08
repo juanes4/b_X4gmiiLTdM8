@@ -27,6 +27,7 @@ class Team:
 class Match:
   team1: Team
   team2: Team
+  league_name: Optional[str] = field(default=None)
   score_team1: Optional[int] = field(default=None)
   score_team2: Optional[int] = field(default=None)
   winner: Optional[Team] = field(default=None)

@@ -1,7 +1,7 @@
 from dataclasses import dataclass, field
 from typing import List, Optional
 from abc import ABC, abstractmethod
-from entities import Player, Team, Match, League
+from .entities import Player, Team, Match, League
 
 
 class IConexionBD(ABC):
@@ -58,4 +58,26 @@ class IGestionJugadores(ABC):
 
     @abstractmethod
     def obtener_jugador(self, player_name: str):
+        pass
+
+class IGestionPartidos(ABC):
+
+    @abstractmethod
+    def crear_partido(self, league_name: str, team1: Team, team2: Team) -> Match:
+        """Genera un nuevo partido dentro de una liga y devuelve el objeto Match."""
+        pass
+
+    @abstractmethod
+    def obtener_partido(self, match_id: str) -> Optional[Match]:
+        """Devuelve el partido correspondiente al identificador proporcionado."""
+        pass
+
+    @abstractmethod
+    def registrar_resultado(self, match_id: str, score_team1: int, score_team2: int) -> bool:
+        """Registra el resultado de un partido existente."""
+        pass
+
+    @abstractmethod
+    def listar_partidos_liga(self, league_name: str) -> List[Match]:
+        """Retorna todos los partidos asociados a una liga."""
         pass

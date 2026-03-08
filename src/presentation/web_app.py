@@ -1,4 +1,4 @@
-from aplication.API import API
+from ..application.API import API
 
 class WebApp:
     def __init__(self, api: API):

@@ -1,8 +1,8 @@
-from src.infraestructure.database import ConexionBD
+from src.infrastructure.database import ConexionBD
 from src.services.player_service import GestionJugadores
 from src.services.team_service import GestionEquipos
 from src.services.league_service import GestionLigas
-from src.aplication.API import API
+from src.application.API import API
 from src.presentation.web_app import WebApp
 
 def main():

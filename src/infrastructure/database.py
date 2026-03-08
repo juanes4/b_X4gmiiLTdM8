@@ -1,4 +1,4 @@
-from src.domain.interfaces import IConexionBD
+from ..domain.interfaces import IConexionBD
 class ConexionBD(IConexionBD):
     def __init__(self):
         self.storage = {

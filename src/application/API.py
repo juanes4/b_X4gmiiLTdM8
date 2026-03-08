@@ -1,4 +1,6 @@
-from domain import IGestionLigas, IGestionEquipos, IGestionJugadores, League, Team, Player, Optional
+from typing import Optional
+from ..domain.interfaces import IGestionLigas, IGestionEquipos, IGestionJugadores
+from ..domain.entities import League, Team, Player
 
 class API:
     def __init__(self, gestion_ligas: IGestionLigas, gestion_equipos: IGestionEquipos, gestion_jugadores: IGestionJugadores):
