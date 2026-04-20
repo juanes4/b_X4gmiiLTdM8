@@ -36,7 +36,7 @@ export default function Home() {
         </header>
 
         {/* Management Section */}
-        <section>
+        <section key={`management-${currentView}`}>
           <ManagementSection />
         </section>
       </div>

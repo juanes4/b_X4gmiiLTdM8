@@ -137,6 +137,10 @@ export function AddTeamForm() {
         state: formData.state,
         players: formData.players.map((p) => ({ id: p.id, name: p.name, position: p.position })),
       })
+      // Re-fetch players so newly assigned players are excluded from next creation
+      playersApi.getAll()
+        .then((players) => setAvailablePlayers(players.filter((p) => !p.team_id)))
+        .catch(() => {})
       setIsSuccess(true)
       setTimeout(() => {
         setFormData({

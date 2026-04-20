@@ -27,7 +27,10 @@ def get_teams():
 def get_team(team_id):
     conn = get_db()
     team = row_to_dict(conn.execute("SELECT * FROM teams WHERE id = ?", (team_id,)).fetchone())
-    players = rows_to_list(conn.execute("SELECT * FROM players WHERE team_id = ?", (team_id,)).fetchall())
+    players = rows_to_list(conn.execute(
+        "SELECT p.* FROM players p INNER JOIN player_teams pt ON p.id = pt.player_id WHERE pt.team_id = ?",
+        (team_id,)
+    ).fetchall())
     conn.close()
     if not team:
         return jsonify({"error": "Team not found"}), 404
@@ -56,16 +59,13 @@ def create_team():
 
     conn = get_db()
     try:
-        # Validate no player is already assigned to a team
-        if player_ids:
-            placeholders = ",".join("?" * len(player_ids))
-            already_assigned = conn.execute(
-                f"SELECT id FROM players WHERE id IN ({placeholders}) AND team_id IS NOT NULL",
-                player_ids
-            ).fetchall()
-            if already_assigned:
+        for pid in player_ids:
+            existing = conn.execute(
+                "SELECT team_id FROM player_teams WHERE player_id = ?", (pid,)
+            ).fetchone()
+            if existing:
                 conn.close()
-                return jsonify({"error": "One or more players are already assigned to a team"}), 400
+                return jsonify({"error": f"Player {pid} is already assigned to another team"}), 400
 
         cur = conn.execute(
             "INSERT INTO teams (name, country, city, abbreviation, logo, state) VALUES (?,?,?,?,?,?)",
@@ -74,11 +74,10 @@ def create_team():
         )
         team_id = cur.lastrowid
 
-        # Assign existing players to this team
         for pid in player_ids:
             conn.execute(
-                "UPDATE players SET team_id = ? WHERE id = ?",
-                (team_id, pid)
+                "INSERT INTO player_teams (player_id, team_id) VALUES (?, ?)",
+                (pid, team_id)
             )
 
         conn.commit()
@@ -126,7 +125,9 @@ def delete_team(team_id):
 def get_players():
     conn = get_db()
     players = rows_to_list(conn.execute(
-        "SELECT p.*, t.name as team_name FROM players p LEFT JOIN teams t ON t.id=p.team_id ORDER BY p.name"
+        """SELECT p.id, p.name, p.age, p.position, p.number, p.created_at,
+           (SELECT team_id FROM player_teams WHERE player_id = p.id LIMIT 1) as team_id
+           FROM players p ORDER BY p.name"""
     ).fetchall())
     conn.close()
     return jsonify(players)
@@ -139,8 +140,8 @@ def create_player():
         return jsonify({"error": "name and position required"}), 400
     conn = get_db()
     cur = conn.execute(
-        "INSERT INTO players (name, age, position, number, team_id) VALUES (?,?,?,?,?)",
-        (data["name"], data.get("age"), data["position"], data.get("number"), data.get("team_id"))
+        "INSERT INTO players (name, age, position, number) VALUES (?,?,?,?)",
+        (data["name"], data.get("age"), data["position"], data.get("number"))
     )
     player = row_to_dict(conn.execute("SELECT * FROM players WHERE id = ?", (cur.lastrowid,)).fetchone())
     conn.commit()
@@ -154,10 +155,10 @@ def update_player(player_id):
     conn = get_db()
     conn.execute(
         """UPDATE players SET name=COALESCE(?,name), age=COALESCE(?,age),
-           position=COALESCE(?,position), number=COALESCE(?,number),
-           team_id=COALESCE(?,team_id) WHERE id=?""",
+           position=COALESCE(?,position), number=COALESCE(?,number)
+           WHERE id=?""",
         (data.get("name"), data.get("age"), data.get("position"),
-         data.get("number"), data.get("team_id"), player_id)
+         data.get("number"), player_id)
     )
     conn.commit()
     player = row_to_dict(conn.execute("SELECT * FROM players WHERE id = ?", (player_id,)).fetchone())
@@ -351,8 +352,21 @@ def create_match():
         (data.get("league_id"), data.get("group_id"),
          data["team1_id"], data["team2_id"], data.get("round"))
     )
-    match = row_to_dict(conn.execute("SELECT * FROM matches WHERE id=?", (cur.lastrowid,)).fetchone())
+    match_id = cur.lastrowid
     conn.commit()
+    
+    # Return match with team information via JOINs
+    match = row_to_dict(conn.execute(
+        """SELECT m.*,
+               t1.name as team1_name, t1.abbreviation as team1_abbr,
+               t2.name as team2_name, t2.abbreviation as team2_abbr,
+               l.name as league_name
+           FROM matches m
+           JOIN teams t1 ON t1.id=m.team1_id
+           JOIN teams t2 ON t2.id=m.team2_id
+           LEFT JOIN leagues l ON l.id=m.league_id
+           WHERE m.id=?""", (match_id,)
+    ).fetchone())
     conn.close()
     return jsonify(match), 201
 
@@ -372,7 +386,17 @@ def update_result(match_id):
         return jsonify({"error": str(e)}), 404
 
     conn = get_db()
-    match = row_to_dict(conn.execute("SELECT * FROM matches WHERE id=?", (match_id,)).fetchone())
+    match = row_to_dict(conn.execute(
+        """SELECT m.*,
+               t1.name as team1_name, t1.abbreviation as team1_abbr,
+               t2.name as team2_name, t2.abbreviation as team2_abbr,
+               l.name as league_name
+           FROM matches m
+           JOIN teams t1 ON t1.id=m.team1_id
+           JOIN teams t2 ON t2.id=m.team2_id
+           LEFT JOIN leagues l ON l.id=m.league_id
+           WHERE m.id=?""", (match_id,)
+    ).fetchone())
     conn.close()
     return jsonify(match)
 

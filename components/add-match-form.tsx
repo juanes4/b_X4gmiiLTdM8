@@ -1,26 +1,18 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Field, FieldLabel, FieldGroup, FieldError } from "@/components/ui/field"
 import { CheckCircle2, Trophy } from "lucide-react"
-
-// Sample teams for selection - in a real app, this would come from an API/database
-const SAMPLE_TEAMS = [
-  { id: "1", name: "FC Barcelona", abbreviation: "FCB" },
-  { id: "2", name: "Real Madrid", abbreviation: "RMA" },
-  { id: "3", name: "Manchester United", abbreviation: "MUN" },
-  { id: "4", name: "Liverpool FC", abbreviation: "LIV" },
-  { id: "5", name: "Bayern Munich", abbreviation: "BAY" },
-]
+import { teamsApi, matchesApi } from "@/lib/api"
+import type { Team } from "@/lib/api"
 
 interface FormData {
   team1: string
   team2: string
-  league_name: string
   score_team1: string
   score_team2: string
   winner: string
@@ -32,13 +24,13 @@ interface FormErrors {
   teams?: string
   score_team1?: string
   score_team2?: string
+  _global?: string
 }
 
 export function AddMatchForm() {
   const [formData, setFormData] = useState<FormData>({
     team1: "",
     team2: "",
-    league_name: "",
     score_team1: "",
     score_team2: "",
     winner: "",
@@ -46,6 +38,15 @@ export function AddMatchForm() {
   const [errors, setErrors] = useState<FormErrors>({})
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [isSuccess, setIsSuccess] = useState(false)
+  const [teams, setTeams] = useState<Team[]>([])
+  const [loadingTeams, setLoadingTeams] = useState(true)
+
+  useEffect(() => {
+    teamsApi.getAll()
+      .then(setTeams)
+      .catch(() => setTeams([]))
+      .finally(() => setLoadingTeams(false))
+  }, [])
 
   const validateForm = (): boolean => {
     const newErrors: FormErrors = {}
@@ -87,25 +88,28 @@ export function AddMatchForm() {
 
     setIsSubmitting(true)
 
-    // Simulate API call
-    await new Promise((resolve) => setTimeout(resolve, 1000))
-
-    console.log("Match created:", formData)
-    setIsSubmitting(false)
-    setIsSuccess(true)
-
-    // Reset form after showing success
-    setTimeout(() => {
-      setFormData({
-        team1: "",
-        team2: "",
-        league_name: "",
-        score_team1: "",
-        score_team2: "",
-        winner: "",
+    try {
+      await matchesApi.create({
+        team1_id: formData.team1,
+        team2_id: formData.team2,
       })
-      setIsSuccess(false)
-    }, 2500)
+      setIsSuccess(true)
+      setTimeout(() => {
+        setFormData({
+          team1: "",
+          team2: "",
+          score_team1: "",
+          score_team2: "",
+          winner: "",
+        })
+        setIsSuccess(false)
+      }, 2500)
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Failed to create match"
+      setErrors((prev) => ({ ...prev, _global: msg }))
+    } finally {
+      setIsSubmitting(false)
+    }
   }
 
   const handleSelectChange = (field: keyof FormData, value: string) => {
@@ -126,18 +130,18 @@ export function AddMatchForm() {
   }
 
   const getTeamName = (teamId: string) => {
-    const team = SAMPLE_TEAMS.find((t) => t.id === teamId)
+    const team = teams.find((t) => t.id === teamId)
     return team ? team.name : ""
   }
 
   const getAvailableWinnerOptions = () => {
     const options = []
     if (formData.team1) {
-      const team = SAMPLE_TEAMS.find((t) => t.id === formData.team1)
+      const team = teams.find((t) => t.id === formData.team1)
       if (team) options.push(team)
     }
     if (formData.team2) {
-      const team = SAMPLE_TEAMS.find((t) => t.id === formData.team2)
+      const team = teams.find((t) => t.id === formData.team2)
       if (team) options.push(team)
     }
     return options
@@ -179,6 +183,10 @@ export function AddMatchForm() {
       <CardContent>
         <form onSubmit={handleSubmit}>
           <FieldGroup>
+            {errors._global && (
+              <p className="text-sm text-destructive">{errors._global}</p>
+            )}
+
             {/* Teams Section */}
             <div className="space-y-4">
               <p className="text-sm font-medium text-muted-foreground">Teams</p>
@@ -188,12 +196,13 @@ export function AddMatchForm() {
                 <Select
                   value={formData.team1}
                   onValueChange={(value) => handleSelectChange("team1", value)}
+                  disabled={loadingTeams}
                 >
                   <SelectTrigger id="team1" className={errors.team1 || errors.teams ? "border-destructive" : ""}>
-                    <SelectValue placeholder="Select team" />
+                    <SelectValue placeholder={loadingTeams ? "Loading teams..." : "Select team"} />
                   </SelectTrigger>
                   <SelectContent>
-                    {SAMPLE_TEAMS.map((team) => (
+                    {teams.map((team) => (
                       <SelectItem key={team.id} value={team.id}>
                         {team.name} ({team.abbreviation})
                       </SelectItem>
@@ -208,12 +217,13 @@ export function AddMatchForm() {
                 <Select
                   value={formData.team2}
                   onValueChange={(value) => handleSelectChange("team2", value)}
+                  disabled={loadingTeams}
                 >
                   <SelectTrigger id="team2" className={errors.team2 || errors.teams ? "border-destructive" : ""}>
-                    <SelectValue placeholder="Select team" />
+                    <SelectValue placeholder={loadingTeams ? "Loading teams..." : "Select team"} />
                   </SelectTrigger>
                   <SelectContent>
-                    {SAMPLE_TEAMS.map((team) => (
+                    {teams.map((team) => (
                       <SelectItem key={team.id} value={team.id}>
                         {team.name} ({team.abbreviation})
                       </SelectItem>
@@ -229,17 +239,6 @@ export function AddMatchForm() {
             {/* Match Details Section */}
             <div className="space-y-4 pt-4 border-t">
               <p className="text-sm font-medium text-muted-foreground">Match Details</p>
-
-              <Field>
-                <FieldLabel htmlFor="league_name">League Name (optional)</FieldLabel>
-                <Input
-                  id="league_name"
-                  type="text"
-                  placeholder="e.g. La Liga, Premier League"
-                  value={formData.league_name}
-                  onChange={(e) => handleInputChange("league_name", e.target.value)}
-                />
-              </Field>
 
               <div className="grid grid-cols-2 gap-4">
                 <Field>
@@ -293,7 +292,7 @@ export function AddMatchForm() {
               </Field>
             </div>
 
-            <Button type="submit" className="w-full mt-4" disabled={isSubmitting}>
+            <Button type="submit" className="w-full mt-4" disabled={isSubmitting || loadingTeams}>
               {isSubmitting ? (
                 <>
                   <span className="animate-spin mr-2">...</span>

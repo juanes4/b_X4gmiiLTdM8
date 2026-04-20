@@ -442,8 +442,8 @@ export function ManagementSection() {
                           ? `${match.score_team1} - ${match.score_team2}`
                           : "vs"
                       const winner =
-                        match.winner_id === match.team1_id ? match.team1_name
-                        : match.winner_id === match.team2_id ? match.team2_name
+                        Number(match.winner_id) === Number(match.team1_id) ? match.team1_name
+                        : Number(match.winner_id) === Number(match.team2_id) ? match.team2_name
                         : match.score_team1 !== null ? "Draw" : "—"
                       return (
                         <TableRow key={match.id}>
@@ -573,8 +573,8 @@ export function ManagementSection() {
             {viewDialog.type === "matches" && viewDialog.item && (() => {
               const m = viewDialog.item as Match
               const winner =
-                m.winner_id === m.team1_id ? m.team1_name
-                : m.winner_id === m.team2_id ? m.team2_name
+                Number(m.winner_id) === Number(m.team1_id) ? m.team1_name
+                : Number(m.winner_id) === Number(m.team2_id) ? m.team2_name
                 : m.score_team1 !== null ? "Draw" : "—"
               return (
                 <div className="grid grid-cols-2 gap-4">

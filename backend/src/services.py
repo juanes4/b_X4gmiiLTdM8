@@ -165,12 +165,22 @@ def register_result(match_id: int, score_team1: int, score_team2: int):
         conn.close()
         raise ValueError("Match not found")
 
+    s1 = score_team1 if score_team1 is not None else 0
+    s2 = score_team2 if score_team2 is not None else 0
+
+    if s1 > s2:
+        winner_id = match["team1_id"]
+    elif s2 > s1:
+        winner_id = match["team2_id"]
+    else:
+        winner_id = None  # draw
+
     conn.execute(
         """UPDATE matches
-           SET score_team1 = ?, score_team2 = ?,
+           SET score_team1 = ?, score_team2 = ?, winner_id = ?,
                played = 1, played_at = datetime('now')
            WHERE id = ?""",
-        (score_team1, score_team2, match_id)
+        (s1, s2, winner_id, match_id)
     )
     conn.commit()
     conn.close()

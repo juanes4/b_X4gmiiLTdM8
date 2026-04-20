@@ -33,8 +33,13 @@ def init_db():
             age         INTEGER,
             position    TEXT NOT NULL,
             number      INTEGER,
-            team_id     INTEGER REFERENCES teams(id) ON DELETE SET NULL,
             created_at  TEXT DEFAULT (datetime('now'))
+        );
+
+        CREATE TABLE IF NOT EXISTS player_teams (
+            player_id   INTEGER NOT NULL REFERENCES players(id) ON DELETE CASCADE,
+            team_id     INTEGER NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
+            PRIMARY KEY (player_id, team_id)
         );
 
         CREATE TABLE IF NOT EXISTS leagues (
@@ -71,6 +76,7 @@ def init_db():
             team2_id        INTEGER NOT NULL REFERENCES teams(id),
             score_team1     INTEGER,
             score_team2     INTEGER,
+            winner_id       INTEGER REFERENCES teams(id),
             round           INTEGER,
             played          INTEGER NOT NULL DEFAULT 0,
             played_at       TEXT,
@@ -79,4 +85,11 @@ def init_db():
     """)
 
     conn.commit()
+
+    # Migrate existing DB: add winner_id if missing
+    cols = [r[1] for r in cur.execute("PRAGMA table_info(matches)").fetchall()]
+    if "winner_id" not in cols:
+        cur.execute("ALTER TABLE matches ADD COLUMN winner_id INTEGER REFERENCES teams(id)")
+        conn.commit()
+
     conn.close()
