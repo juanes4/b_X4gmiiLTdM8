@@ -75,35 +75,35 @@ export function AddTeamForm() {
     const newErrors: FormErrors = {}
 
     if (!formData.name.trim()) {
-      newErrors.name = "Team name is required"
+      newErrors.name = "Please enter the team name"
     } else if (formData.name.trim().length < 2) {
-      newErrors.name = "Name must be at least 2 characters"
+      newErrors.name = "The team name must be at least 2 characters long"
     }
 
     if (!formData.country.trim()) {
-      newErrors.country = "Country is required"
+      newErrors.country = "Please enter the country"
     }
 
     if (!formData.city.trim()) {
-      newErrors.city = "City is required"
+      newErrors.city = "Please enter the city"
     }
 
     if (!formData.abbreviation.trim()) {
-      newErrors.abbreviation = "Abbreviation is required"
+      newErrors.abbreviation = "Please enter an abbreviation (e.g. FCB)"
     } else if (formData.abbreviation.length > 5) {
-      newErrors.abbreviation = "Abbreviation must be 5 characters or less"
+      newErrors.abbreviation = "The abbreviation cannot be longer than 5 characters"
     }
 
     if (formData.logo && !isValidUrl(formData.logo)) {
-      newErrors.logo = "Please enter a valid URL"
+      newErrors.logo = "The logo link doesn't look like a valid web address"
     }
 
     if (!formData.state) {
-      newErrors.state = "State is required"
+      newErrors.state = "Please select a status for the team"
     }
 
     if (formData.players.length < 11) {
-      newErrors.players = `At least 11 players required (${formData.players.length} selected)`
+      newErrors.players = `You need to select at least 11 players (${formData.players.length} selected so far)`
     }
 
     setErrors(newErrors)
@@ -155,8 +155,13 @@ export function AddTeamForm() {
         setIsSuccess(false)
       }, 2500)
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : "Failed to create team"
-      setErrors((prev) => ({ ...prev, players: msg }))
+      const msg = err instanceof Error ? err.message : ""
+      const friendly = msg.toLowerCase().includes("unique") || msg.toLowerCase().includes("already exists")
+        ? "A team with this name already exists. Please choose a different name."
+        : msg.toLowerCase().includes("already assigned")
+          ? "One or more selected players is already on another team."
+          : "Something went wrong while saving the team. Please try again."
+      setErrors((prev) => ({ ...prev, players: friendly }))
     } finally {
       setIsSubmitting(false)
     }
@@ -331,8 +336,8 @@ export function AddTeamForm() {
               <div className="flex items-center justify-between">
                 <p className="text-sm font-medium text-muted-foreground">
                   Players{" "}
-                  <span className={formData.players.length === 11 ? "text-emerald-600" : "text-muted-foreground"}>
-                    ({formData.players.length}/11)
+                  <span className={formData.players.length >= 11 ? "text-emerald-600" : "text-muted-foreground"}>
+                    ({formData.players.length} — min. 11)
                   </span>
                 </p>
               </div>
@@ -341,7 +346,7 @@ export function AddTeamForm() {
                 <Select
                   value={selectedPlayerId}
                   onValueChange={setSelectedPlayerId}
-                  disabled={loadingPlayers || formData.players.length >= 11}
+                  disabled={loadingPlayers}
                 >
                   <SelectTrigger className={`flex-1 ${errors.players ? "border-destructive" : ""}`}>
                     <SelectValue placeholder={loadingPlayers ? "Loading players..." : "Select player"} />
@@ -364,7 +369,7 @@ export function AddTeamForm() {
                   variant="outline"
                   size="icon"
                   onClick={addPlayer}
-                  disabled={!selectedPlayerId || formData.players.length >= 11}
+                  disabled={!selectedPlayerId}
                 >
                   <Plus className="h-4 w-4" />
                 </Button>
@@ -401,7 +406,7 @@ export function AddTeamForm() {
             <Button
               type="submit"
               className="w-full mt-4"
-              disabled={isSubmitting || formData.players.length !== 11}
+              disabled={isSubmitting || formData.players.length < 11}
             >
               {isSubmitting ? (
                 <>

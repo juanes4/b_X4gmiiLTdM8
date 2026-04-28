@@ -375,16 +375,17 @@ export function ManagementSection() {
                     <TableHead className="hidden sm:table-cell">Position</TableHead>
                     <TableHead className="hidden md:table-cell">Age</TableHead>
                     <TableHead>#</TableHead>
+                    <TableHead className="hidden lg:table-cell">Team</TableHead>
                     <TableHead className="text-right">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {loadingPlayers ? (
-                    <SkeletonRows cols={5} />
+                    <SkeletonRows cols={6} />
                   ) : errorPlayers ? (
-                    <ErrorRow cols={5} message={errorPlayers} onRetry={fetchPlayers} />
+                    <ErrorRow cols={6} message={errorPlayers} onRetry={fetchPlayers} />
                   ) : filteredPlayers.length === 0 ? (
-                    <EmptyRow cols={5} message={searchQuery ? "No players match your search" : "No players found"} />
+                    <EmptyRow cols={6} message={searchQuery ? "No players match your search" : "No players found"} />
                   ) : (
                     filteredPlayers.map((player) => (
                       <TableRow key={player.id}>
@@ -394,6 +395,7 @@ export function ManagementSection() {
                         </TableCell>
                         <TableCell className="hidden md:table-cell">{player.age ?? "—"}</TableCell>
                         <TableCell>{player.number ?? "—"}</TableCell>
+                        <TableCell className="hidden lg:table-cell">{getTeamName(player.team_id)}</TableCell>
                         <TableCell className="text-right">
                           <div className="flex justify-end gap-1">
                             <Button variant="ghost" size="icon" onClick={() => handleView("players", player)}>
@@ -536,7 +538,7 @@ export function ManagementSection() {
 
       {/* ── View Dialog ── */}
       <Dialog open={viewDialog.open} onOpenChange={(open) => setViewDialog({ ...viewDialog, open })}>
-        <DialogContent>
+        <DialogContent className={viewDialog.type === "teams" ? "sm:max-w-2xl" : undefined}>
           <DialogHeader>
             <DialogTitle>
               {viewDialog.type === "teams" && "Team Details"}
@@ -548,25 +550,79 @@ export function ManagementSection() {
           <div className="space-y-4 py-4">
             {viewDialog.type === "teams" && viewDialog.item && (() => {
               const t = viewDialog.item as Team
+              const teamPlayers = players.filter((p) => String(p.team_id) === String(t.id))
               return (
-                <div className="grid grid-cols-2 gap-4">
-                  <div><p className="text-sm text-muted-foreground">Name</p><p className="font-medium">{t.name}</p></div>
-                  <div><p className="text-sm text-muted-foreground">Abbreviation</p><p className="font-medium">{t.abbreviation}</p></div>
-                  <div><p className="text-sm text-muted-foreground">Country</p><p className="font-medium">{t.country}</p></div>
-                  <div><p className="text-sm text-muted-foreground">City</p><p className="font-medium">{t.city}</p></div>
-                  <div><p className="text-sm text-muted-foreground">State</p><Badge variant={t.state === "active" ? "default" : "secondary"}>{t.state}</Badge></div>
+                <div className="space-y-5">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div><p className="text-sm text-muted-foreground">Name</p><p className="font-medium">{t.name}</p></div>
+                    <div><p className="text-sm text-muted-foreground">Abbreviation</p><p className="font-medium">{t.abbreviation}</p></div>
+                    <div><p className="text-sm text-muted-foreground">Country</p><p className="font-medium">{t.country}</p></div>
+                    <div><p className="text-sm text-muted-foreground">City</p><p className="font-medium">{t.city}</p></div>
+                    <div><p className="text-sm text-muted-foreground">State</p><Badge variant={t.state === "active" ? "default" : "secondary"}>{t.state}</Badge></div>
+                  </div>
+                  <div className="border-t pt-4">
+                    <p className="text-sm font-medium text-muted-foreground mb-3">
+                      Squad <span className="text-foreground">({teamPlayers.length})</span>
+                    </p>
+                    {teamPlayers.length === 0 ? (
+                      <p className="text-sm text-muted-foreground">No players assigned to this team.</p>
+                    ) : (
+                      <div className="grid grid-cols-2 gap-2 max-h-64 overflow-y-auto pr-1">
+                        {teamPlayers.map((p) => (
+                          <div key={p.id} className="flex items-center justify-between rounded-md border bg-muted/40 px-3 py-2">
+                            <div className="flex items-center gap-2 min-w-0">
+                              <span className="text-xs text-muted-foreground w-6 shrink-0">#{p.number ?? "—"}</span>
+                              <span className="text-sm font-medium truncate">{p.name}</span>
+                            </div>
+                            <Badge variant="outline" className="text-xs ml-2 shrink-0">{p.position}</Badge>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
                 </div>
               )
             })()}
             {viewDialog.type === "players" && viewDialog.item && (() => {
               const p = viewDialog.item as Player
+              const team = teams.find((t) => String(t.id) === String(p.team_id)) ?? null
               return (
-                <div className="grid grid-cols-2 gap-4">
-                  <div><p className="text-sm text-muted-foreground">Name</p><p className="font-medium">{p.name}</p></div>
-                  <div><p className="text-sm text-muted-foreground">Age</p><p className="font-medium">{p.age ?? "—"}</p></div>
-                  <div><p className="text-sm text-muted-foreground">Position</p><Badge variant="outline">{p.position}</Badge></div>
-                  <div><p className="text-sm text-muted-foreground">Jersey Number</p><p className="font-medium">#{p.number ?? "—"}</p></div>
-                  <div><p className="text-sm text-muted-foreground">Team</p><p className="font-medium">{p.team_name || getTeamName(p.team_id)}</p></div>
+                <div className="space-y-5">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div><p className="text-sm text-muted-foreground">Name</p><p className="font-medium">{p.name}</p></div>
+                    <div><p className="text-sm text-muted-foreground">Age</p><p className="font-medium">{p.age ?? "—"}</p></div>
+                    <div><p className="text-sm text-muted-foreground">Position</p><Badge variant="outline">{p.position}</Badge></div>
+                    <div><p className="text-sm text-muted-foreground">Jersey Number</p><p className="font-medium">#{p.number ?? "—"}</p></div>
+                  </div>
+                  <div className="border-t pt-4">
+                    <p className="text-sm font-medium text-muted-foreground mb-3">Team</p>
+                    {team ? (
+                      <div className="rounded-md border bg-muted/40 px-4 py-3 grid grid-cols-2 gap-3">
+                        <div>
+                          <p className="text-xs text-muted-foreground">Name</p>
+                          <p className="font-medium">{team.name}</p>
+                        </div>
+                        <div>
+                          <p className="text-xs text-muted-foreground">Abbreviation</p>
+                          <p className="font-medium">{team.abbreviation}</p>
+                        </div>
+                        <div>
+                          <p className="text-xs text-muted-foreground">Country</p>
+                          <p className="font-medium">{team.country}</p>
+                        </div>
+                        <div>
+                          <p className="text-xs text-muted-foreground">City</p>
+                          <p className="font-medium">{team.city}</p>
+                        </div>
+                        <div>
+                          <p className="text-xs text-muted-foreground">State</p>
+                          <Badge variant={team.state === "active" ? "default" : "secondary"}>{team.state}</Badge>
+                        </div>
+                      </div>
+                    ) : (
+                      <p className="text-sm text-muted-foreground">This player is not assigned to any team.</p>
+                    )}
+                  </div>
                 </div>
               )
             })()}

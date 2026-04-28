@@ -142,7 +142,7 @@ function TeamForm({ onSuccess }: { onSuccess: (title: string, subtitle: string) 
 
   useEffect(() => {
     playersApi.getAll()
-      .then(setAvailablePlayers)
+      .then((players) => setAvailablePlayers(players.filter((p) => !p.team_id)))
       .catch(() => {})
       .finally(() => setLoadingPlayers(false))
   }, [])
@@ -154,14 +154,15 @@ function TeamForm({ onSuccess }: { onSuccess: (title: string, subtitle: string) 
 
   const validateForm = (): boolean => {
     const e: Record<string, string> = {}
-    if (!formData.name.trim()) e.name = "Team name is required"
-    else if (formData.name.trim().length < 2) e.name = "Name must be at least 2 characters"
-    if (!formData.country.trim()) e.country = "Country is required"
-    if (!formData.city.trim()) e.city = "City is required"
-    if (!formData.abbreviation.trim()) e.abbreviation = "Abbreviation is required"
-    else if (formData.abbreviation.length > 5) e.abbreviation = "Abbreviation must be 5 characters or less"
-    if (formData.logo && !isValidUrl(formData.logo)) e.logo = "Please enter a valid URL"
-    if (!formData.state) e.state = "State is required"
+    if (!formData.name.trim()) e.name = "Please enter the team name"
+    else if (formData.name.trim().length < 2) e.name = "The team name must be at least 2 characters long"
+    if (!formData.country.trim()) e.country = "Please enter the country"
+    if (!formData.city.trim()) e.city = "Please enter the city"
+    if (!formData.abbreviation.trim()) e.abbreviation = "Please enter an abbreviation (e.g. FCB)"
+    else if (formData.abbreviation.length > 5) e.abbreviation = "The abbreviation cannot be longer than 5 characters"
+    if (formData.logo && !isValidUrl(formData.logo)) e.logo = "The logo link doesn't look like a valid web address"
+    if (!formData.state) e.state = "Please select a status for the team"
+    if (formData.players.length < 11) e.players = `You need to select at least 11 players (${formData.players.length} selected so far)`
     setErrors(e)
     return Object.keys(e).length === 0
   }
@@ -178,12 +179,18 @@ function TeamForm({ onSuccess }: { onSuccess: (title: string, subtitle: string) 
         abbreviation: formData.abbreviation,
         logo: formData.logo,
         state: formData.state,
-        players: formData.players.map((p) => ({ name: p.name, position: p.position })),
+        players: formData.players.map((p) => ({ id: p.id, name: p.name, position: p.position })),
       })
       onSuccess("Team Added Successfully", `${formData.name} (${formData.abbreviation}) has been created`)
       setFormData({ name: "", country: "", city: "", abbreviation: "", logo: "", state: "active", players: [] })
     } catch (err) {
-      setErrors({ _global: err instanceof Error ? err.message : "Failed to create team" })
+      const msg = err instanceof Error ? err.message : ""
+      const friendly = msg.toLowerCase().includes("unique") || msg.toLowerCase().includes("already exists")
+        ? "A team with this name already exists. Please choose a different name."
+        : msg.toLowerCase().includes("already assigned")
+          ? "One or more selected players is already on another team."
+          : "Something went wrong while saving the team. Please try again."
+      setErrors({ _global: friendly })
     } finally {
       setIsSubmitting(false)
     }
@@ -283,10 +290,21 @@ function TeamForm({ onSuccess }: { onSuccess: (title: string, subtitle: string) 
 
         {/* Players Section */}
         <div className="space-y-4 pt-6 border-t">
-          <p className="text-sm font-medium text-muted-foreground">Players</p>
+          <div className="flex items-center justify-between">
+            <p className="text-sm font-medium text-muted-foreground">
+              Players{" "}
+              <span className={formData.players.length >= 11 ? "text-emerald-600" : "text-muted-foreground"}>
+                ({formData.players.length} — min. 11)
+              </span>
+            </p>
+          </div>
           <div className="flex gap-2">
-            <Select value={selectedPlayerId} onValueChange={setSelectedPlayerId}>
-              <SelectTrigger className="flex-1">
+            <Select
+              value={selectedPlayerId}
+              onValueChange={setSelectedPlayerId}
+              disabled={loadingPlayers}
+            >
+              <SelectTrigger className={`flex-1 ${errors.players ? "border-destructive" : ""}`}>
                 <SelectValue placeholder={loadingPlayers ? "Loading players..." : "Select player"} />
               </SelectTrigger>
               <SelectContent>
@@ -297,12 +315,22 @@ function TeamForm({ onSuccess }: { onSuccess: (title: string, subtitle: string) 
                       {p.name} ({p.position})
                     </SelectItem>
                   ))}
+                {availablePlayers.filter((p) => !formData.players.some((fp) => fp.id === String(p.id))).length === 0 && !loadingPlayers && (
+                  <SelectItem value="__none__" disabled>No available players</SelectItem>
+                )}
               </SelectContent>
             </Select>
-            <Button type="button" variant="outline" size="icon" onClick={addPlayer}>
+            <Button
+              type="button"
+              variant="outline"
+              size="icon"
+              onClick={addPlayer}
+              disabled={!selectedPlayerId}
+            >
               <Plus className="h-4 w-4" />
             </Button>
           </div>
+          {errors.players && <p className="text-sm text-destructive">{errors.players}</p>}
           {formData.players.length > 0 && (
             <div className="space-y-2">
               {formData.players.map((player) => (
@@ -340,15 +368,15 @@ function PlayerForm({ onSuccess }: { onSuccess: (title: string, subtitle: string
 
   const validateForm = (): boolean => {
     const e: Record<string, string> = {}
-    if (!formData.name.trim()) e.name = "Name is required"
-    else if (formData.name.trim().length < 2) e.name = "Name must be at least 2 characters"
+    if (!formData.name.trim()) e.name = "Please enter the player's name"
+    else if (formData.name.trim().length < 2) e.name = "The player's name must be at least 2 characters long"
     const age = parseInt(formData.age)
-    if (!formData.age) e.age = "Age is required"
-    else if (isNaN(age) || age < 15 || age > 50) e.age = "Age must be between 15 and 50"
-    if (!formData.position) e.position = "Position is required"
+    if (!formData.age) e.age = "Please enter the player's age"
+    else if (isNaN(age) || age < 15 || age > 50) e.age = "Age must be a number between 15 and 50"
+    if (!formData.position) e.position = "Please select the player's position"
     const number = parseInt(formData.number)
-    if (!formData.number) e.number = "Number is required"
-    else if (isNaN(number) || number < 1 || number > 99) e.number = "Number must be between 1 and 99"
+    if (!formData.number) e.number = "Please enter the player's jersey number"
+    else if (isNaN(number) || number < 1 || number > 99) e.number = "Jersey number must be between 1 and 99"
     setErrors(e)
     return Object.keys(e).length === 0
   }
@@ -368,7 +396,7 @@ function PlayerForm({ onSuccess }: { onSuccess: (title: string, subtitle: string
       onSuccess("Player Added Successfully", `${formData.name} has been added to the roster`)
       setFormData({ name: "", age: "", position: "", number: "" })
     } catch (err) {
-      setErrors({ _global: err instanceof Error ? err.message : "Failed to create player" })
+      setErrors({ _global: "Something went wrong while saving the player. Please try again." })
     } finally {
       setIsSubmitting(false)
     }
@@ -462,16 +490,16 @@ function MatchForm({ onSuccess }: { onSuccess: (title: string, subtitle: string)
 
   const validateForm = (): boolean => {
     const e: Record<string, string> = {}
-    if (!formData.team1) e.team1 = "Please select Team 1"
-    if (!formData.team2) e.team2 = "Please select Team 2"
-    if (formData.team1 && formData.team2 && formData.team1 === formData.team2) e.teams = "Teams must be different"
+    if (!formData.team1) e.team1 = "Please select the first team"
+    if (!formData.team2) e.team2 = "Please select the second team"
+    if (formData.team1 && formData.team2 && formData.team1 === formData.team2) e.teams = "You cannot select the same team twice — please choose two different teams"
     if (formData.score_team1 !== "") {
       const s = parseInt(formData.score_team1)
-      if (isNaN(s) || s < 0) e.score_team1 = "Score must be 0 or greater"
+      if (isNaN(s) || s < 0) e.score_team1 = "The score must be a whole number (0 or higher)"
     }
     if (formData.score_team2 !== "") {
       const s = parseInt(formData.score_team2)
-      if (isNaN(s) || s < 0) e.score_team2 = "Score must be 0 or greater"
+      if (isNaN(s) || s < 0) e.score_team2 = "The score must be a whole number (0 or higher)"
     }
     setErrors(e)
     return Object.keys(e).length === 0
@@ -499,7 +527,7 @@ function MatchForm({ onSuccess }: { onSuccess: (title: string, subtitle: string)
       onSuccess("Match Created", `${t1} vs ${t2}`)
       setFormData({ team1: "", team2: "", league_id: "", score_team1: "", score_team2: "" })
     } catch (err) {
-      setErrors({ _global: err instanceof Error ? err.message : "Failed to create match" })
+      setErrors({ _global: "Something went wrong while saving the match. Please try again." })
     } finally {
       setIsSubmitting(false)
     }
@@ -638,13 +666,13 @@ function LeagueForm({ onSuccess }: { onSuccess: (title: string, subtitle: string
 
   const validateForm = (): boolean => {
     const e: Record<string, string> = {}
-    if (!formData.name.trim()) e.name = "League name is required"
-    else if (formData.name.trim().length < 2) e.name = "Name must be at least 2 characters"
-    if (formData.teams.length < 2) e.teams = "Select at least 2 teams"
-    if (!formData.start_date) e.start_date = "Start date is required"
-    if (!formData.end_date) e.end_date = "End date is required"
+    if (!formData.name.trim()) e.name = "Please enter the league name"
+    else if (formData.name.trim().length < 2) e.name = "The league name must be at least 2 characters long"
+    if (formData.teams.length < 2) e.teams = "You need to add at least 2 teams to create a league"
+    if (!formData.start_date) e.start_date = "Please select a start date"
+    if (!formData.end_date) e.end_date = "Please select an end date"
     if (formData.start_date && formData.end_date && formData.start_date >= formData.end_date) {
-      e.end_date = "End date must be after start date"
+      e.end_date = "The end date must be after the start date"
     }
     setErrors(e)
     return Object.keys(e).length === 0
@@ -693,7 +721,11 @@ function LeagueForm({ onSuccess }: { onSuccess: (title: string, subtitle: string
       onSuccess("League Created", `${formData.name} with ${formData.teams.length} teams`)
       setFormData({ name: "", teams: [], start_date: undefined, end_date: undefined })
     } catch (err) {
-      setErrors({ _global: err instanceof Error ? err.message : "Failed to create league" })
+      const msg = err instanceof Error ? err.message : ""
+      const friendly = msg.toLowerCase().includes("unique") || msg.toLowerCase().includes("already exists")
+        ? "A league with this name already exists. Please choose a different name."
+        : "Something went wrong while saving the league. Please try again."
+      setErrors({ _global: friendly })
     } finally {
       setIsSubmitting(false)
     }
