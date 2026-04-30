@@ -1,0 +1,29 @@
+node_modules
+.env.local
+
+# Dependencias
+node_modules/
+.pnpm-store/
+
+# Producción / Build
+dist/
+build/
+.next/
+out/
+
+# Variables de entorno
+.env
+.env*.local
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+
+# Sistema y Editores
+.DS_Store
+.vscode/
+.idea/
+
+# Tests
+coverage/

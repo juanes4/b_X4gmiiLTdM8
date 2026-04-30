@@ -1,0 +1,41 @@
+Sistema para la gestión de campeonatos de
+fútbol
+Descripción
+Las ligas y torneos de fútbol, tanto a nivel amateur como semiprofesional,
+requieren una organización eficiente para gestionar equipos, partidos y resultados
+a lo largo de un campeonato. Cuando esta gestión se realiza de forma manual o
+con herramientas poco integradas, se presentan errores en la asignación de
+grupos, retrasos en la actualización de resultados y dificultades para mantener
+informados a los participantes.
+Se desea desarrollar una aplicación que permita crear y administrar campeonatos
+de fútbol, facilitando la generación automática y aleatoria de grupos, el registro de
+los resultados de los partidos y la visualización actualizada de las tablas de
+posiciones. El sistema debe centralizar la información del torneo y ofrecer acceso
+claro tanto a organizadores como a participantes y público interesado.
+La aplicación debe soportar diferentes tamaños de campeonatos y permitir que
+varios torneos se gestionen de manera simultánea. Asimismo, debe garantizar la
+consistencia de los datos al momento de registrar resultados y recalcular
+posiciones, evitando errores que afecten la transparencia del campeonato.
+Dado que los campeonatos pueden cambiar de formato entre temporadas, la
+solución debe diseñarse con una arquitectura que facilite la evolución de las reglas
+del torneo, el mantenimiento del sistema y la posible integración futura con otros
+servicios, como plataformas de difusión de resultados o sistemas de inscripción de
+equipos.
+
+Reglas de negocio iniciales
+● Número variable de equipos por campeonato
+● Generación automática y aleatoria de grupos equilibrados
+● Sistema de puntuación:
+o Victoria: 3 puntos
+o Empate: 1 punto
+o Derrota: 0 puntos
+● Criterios de desempate:
+1. Diferencia de goles
+2. Goles a favor
+3. Resultado entre equipos
+
+Retos arquitectónicos
+● Separación entre lógica de negocio y presentación
+● Consistencia de datos
+● Escalabilidad para múltiples campeonatos
+● Persistencia de la información

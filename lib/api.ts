@@ -59,6 +59,29 @@ export interface Standing {
   points: number
 }
 
+// ── Section API Interfaces (ISP + DIP) ─────────────────────────────────────────
+// Each section only depends on the operations it actually uses.
+
+export interface ITeamsMutations {
+  update: (id: string, data: Partial<Team>) => Promise<Team>
+  delete: (id: string) => Promise<{ deleted: number }>
+}
+
+export interface IPlayersMutations {
+  update: (id: string, data: Partial<Player>) => Promise<Player>
+  delete: (id: string) => Promise<{ deleted: number }>
+}
+
+export interface IMatchesMutations {
+  updateResult: (id: string, score_team1: number, score_team2: number) => Promise<Match>
+  delete: (id: string) => Promise<{ deleted: number }>
+}
+
+export interface ILeaguesMutations {
+  update: (id: string, data: Partial<League> & { teams?: string[] }) => Promise<League>
+  delete: (id: string) => Promise<{ deleted: number }>
+}
+
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
 async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
