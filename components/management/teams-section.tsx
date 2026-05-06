@@ -9,6 +9,7 @@ import { Field, FieldLabel, FieldGroup, FieldError } from "@/components/ui/field
 import type { Team, Player, ITeamsMutations } from "@/lib/api"
 import { SkeletonRows, ErrorRow, EmptyRow } from "./table-states"
 import { useSectionState, RowActions, DeleteConfirmDialog, EditDialogFooter, stateBadgeVariant } from "./shared"
+import { LogoInput } from "@/components/ui/logo-input"
 
 const STATES = ["active", "inactive", "suspended"]
 
@@ -33,12 +34,19 @@ export function TeamsSection({ teams, players, loading, error, searchQuery, onRe
 
   const squadOf = (team: Team) => players.filter((p) => String(p.team_id) === String(team.id))
 
+  const isValidLogoValue = (s: string): boolean => {
+    if (!s) return true
+    if (s.startsWith("/uploads/")) return true
+    try { new URL(s); return true } catch { return false }
+  }
+
   const handleSave = async () => {
     if (!editTeam) return
     const errors: Record<string, string> = {}
     if (!editTeam.name.trim()) errors.name = "Name is required"
     if (!editTeam.country.trim()) errors.country = "Country is required"
     if (!editTeam.city.trim()) errors.city = "City is required"
+    if (editTeam.logo && !isValidLogoValue(editTeam.logo)) errors.logo = "The logo link doesn't look like a valid web address"
     if (Object.keys(errors).length > 0) { setEditErrors(errors); return }
 
     setIsSaving(true)
@@ -115,7 +123,17 @@ export function TeamsSection({ teams, players, loading, error, searchQuery, onRe
             <DialogDescription>Full information about the selected team</DialogDescription>
           </DialogHeader>
           {viewTeam && (
-            <div className="space-y-5 py-4">
+            <div className="space-y-5 py-4 max-h-[70vh] overflow-y-auto pr-1">
+              {viewTeam.logo && (
+                <div className="flex justify-center">
+                  <img
+                    src={viewTeam.logo}
+                    alt={`${viewTeam.name} logo`}
+                    className="h-24 w-24 object-contain rounded-lg border bg-muted/40 p-2"
+                    onError={(e) => { (e.target as HTMLImageElement).style.display = "none" }}
+                  />
+                </div>
+              )}
               <div className="grid grid-cols-2 gap-4">
                 <div><p className="text-sm text-muted-foreground">Name</p><p className="font-medium">{viewTeam.name}</p></div>
                 <div><p className="text-sm text-muted-foreground">Abbreviation</p><p className="font-medium">{viewTeam.abbreviation}</p></div>
@@ -197,6 +215,16 @@ export function TeamsSection({ teams, players, loading, error, searchQuery, onRe
                   </Select>
                 </Field>
               </div>
+              <Field>
+                <FieldLabel>Logo (optional)</FieldLabel>
+                <LogoInput
+                  value={editTeam.logo ?? ""}
+                  onChange={(url) => setEditTeam({ ...editTeam, logo: url })}
+                  disabled={isSaving}
+                  error={!!editErrors.logo}
+                />
+                {editErrors.logo && <FieldError>{editErrors.logo}</FieldError>}
+              </Field>
             </FieldGroup>
           )}
           <EditDialogFooter isSaving={isSaving} onCancel={() => setEditTeam(null)} onSave={handleSave} />
