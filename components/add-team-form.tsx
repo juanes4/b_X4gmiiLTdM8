@@ -10,6 +10,7 @@ import { Badge } from "@/components/ui/badge"
 import { CheckCircle2, Shield, Plus, X } from "lucide-react"
 import { playersApi, teamsApi } from "@/lib/api"
 import type { Player } from "@/lib/api"
+import { LogoInput } from "@/components/ui/logo-input"
 
 const STATES = ["active", "inactive", "suspended"]
 
@@ -94,7 +95,7 @@ export function AddTeamForm() {
       newErrors.abbreviation = "The abbreviation cannot be longer than 5 characters"
     }
 
-    if (formData.logo && !isValidUrl(formData.logo)) {
+    if (formData.logo && !isValidLogoValue(formData.logo)) {
       newErrors.logo = "The logo link doesn't look like a valid web address"
     }
 
@@ -110,14 +111,10 @@ export function AddTeamForm() {
     return Object.keys(newErrors).length === 0
   }
 
-  const isValidUrl = (string: string): boolean => {
-    if (!string) return true
-    try {
-      new URL(string)
-      return true
-    } catch {
-      return false
-    }
+  const isValidLogoValue = (s: string): boolean => {
+    if (!s) return true
+    if (s.startsWith("/uploads/")) return true
+    try { new URL(s); return true } catch { return false }
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -318,14 +315,12 @@ export function AddTeamForm() {
               </div>
 
               <Field>
-                <FieldLabel htmlFor="logo">Logo URL (optional)</FieldLabel>
-                <Input
-                  id="logo"
-                  type="text"
-                  placeholder="https://example.com/logo.png"
+                <FieldLabel>Logo (optional)</FieldLabel>
+                <LogoInput
                   value={formData.logo}
-                  onChange={(e) => handleInputChange("logo", e.target.value)}
-                  className={errors.logo ? "border-destructive" : ""}
+                  onChange={(url) => handleInputChange("logo", url)}
+                  disabled={isSubmitting}
+                  error={!!errors.logo}
                 />
                 {errors.logo && <FieldError>{errors.logo}</FieldError>}
               </Field>

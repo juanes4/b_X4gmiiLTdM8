@@ -125,7 +125,7 @@ def delete_team(team_id):
 def get_players():
     conn = get_db()
     players = rows_to_list(conn.execute(
-        """SELECT p.id, p.name, p.age, p.position, p.number, p.created_at,
+        """SELECT p.id, p.name, p.age, p.position, p.number, p.photo, p.created_at,
            (SELECT team_id FROM player_teams WHERE player_id = p.id LIMIT 1) as team_id
            FROM players p ORDER BY p.name"""
     ).fetchall())
@@ -140,8 +140,8 @@ def create_player():
         return jsonify({"error": "name and position required"}), 400
     conn = get_db()
     cur = conn.execute(
-        "INSERT INTO players (name, age, position, number) VALUES (?,?,?,?)",
-        (data["name"], data.get("age"), data["position"], data.get("number"))
+        "INSERT INTO players (name, age, position, number, photo) VALUES (?,?,?,?,?)",
+        (data["name"], data.get("age"), data["position"], data.get("number"), data.get("photo", ""))
     )
     player = row_to_dict(conn.execute("SELECT * FROM players WHERE id = ?", (cur.lastrowid,)).fetchone())
     conn.commit()
@@ -155,10 +155,11 @@ def update_player(player_id):
     conn = get_db()
     conn.execute(
         """UPDATE players SET name=COALESCE(?,name), age=COALESCE(?,age),
-           position=COALESCE(?,position), number=COALESCE(?,number)
+           position=COALESCE(?,position), number=COALESCE(?,number),
+           photo=COALESCE(?,photo)
            WHERE id=?""",
         (data.get("name"), data.get("age"), data.get("position"),
-         data.get("number"), player_id)
+         data.get("number"), data.get("photo"), player_id)
     )
     conn.commit()
     player = row_to_dict(conn.execute("SELECT * FROM players WHERE id = ?", (player_id,)).fetchone())

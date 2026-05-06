@@ -10,6 +10,7 @@ import { Shield, Plus, X } from "lucide-react"
 import { teamsApi, playersApi } from "@/lib/api"
 import type { Player } from "@/lib/api"
 import { FormHeader, SubmitButton } from "./shared"
+import { LogoInput } from "@/components/ui/logo-input"
 
 const STATES = ["active", "inactive", "suspended"]
 const MIN_PLAYERS = 11
@@ -47,8 +48,9 @@ export function TeamForm({ onSuccess }: TeamFormProps) {
       .finally(() => setLoadingPlayers(false))
   }, [])
 
-  const isValidUrl = (s: string): boolean => {
+  const isValidLogoValue = (s: string): boolean => {
     if (!s) return true
+    if (s.startsWith("/uploads/")) return true
     try { new URL(s); return true } catch { return false }
   }
 
@@ -60,7 +62,7 @@ export function TeamForm({ onSuccess }: TeamFormProps) {
     if (!formData.city.trim()) e.city = "Please enter the city"
     if (!formData.abbreviation.trim()) e.abbreviation = "Please enter an abbreviation (e.g. FCB)"
     else if (formData.abbreviation.length > 5) e.abbreviation = "The abbreviation cannot be longer than 5 characters"
-    if (formData.logo && !isValidUrl(formData.logo)) e.logo = "The logo link doesn't look like a valid web address"
+    if (formData.logo && !isValidLogoValue(formData.logo)) e.logo = "The logo link doesn't look like a valid web address"
     if (!formData.state) e.state = "Please select a status for the team"
     if (formData.players.length < MIN_PLAYERS) e.players = `You need to select at least ${MIN_PLAYERS} players (${formData.players.length} selected so far)`
     setErrors(e)
@@ -177,10 +179,13 @@ export function TeamForm({ onSuccess }: TeamFormProps) {
             </Field>
           </div>
           <Field>
-            <FieldLabel htmlFor="team-logo">Logo URL (optional)</FieldLabel>
-            <Input id="team-logo" placeholder="https://example.com/logo.png" value={formData.logo}
-              onChange={(e) => handleInputChange("logo", e.target.value)}
-              className={errors.logo ? "border-destructive" : ""} />
+            <FieldLabel>Logo (optional)</FieldLabel>
+            <LogoInput
+              value={formData.logo}
+              onChange={(url) => handleInputChange("logo", url)}
+              disabled={isSubmitting}
+              error={!!errors.logo}
+            />
             {errors.logo && <FieldError>{errors.logo}</FieldError>}
           </Field>
         </div>
