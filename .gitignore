@@ -1,0 +1,9 @@
+node_modules/
+.next/
+.env.local
+venv/
+__pycache__/
+*.pyc
+dist/
+build/
+Necesario.txt
