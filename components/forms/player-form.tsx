@@ -7,6 +7,7 @@ import { Field, FieldLabel, FieldGroup, FieldError } from "@/components/ui/field
 import { UserPlus } from "lucide-react"
 import { playersApi } from "@/lib/api"
 import { FormHeader, SubmitButton } from "./shared"
+import { LogoInput } from "@/components/ui/logo-input"
 
 const POSITIONS = ["Goalkeeper", "Defender", "Midfielder", "Forward"]
 
@@ -15,7 +16,7 @@ interface PlayerFormProps {
 }
 
 export function PlayerForm({ onSuccess }: PlayerFormProps) {
-  const [formData, setFormData] = useState({ name: "", age: "", position: "", number: "" })
+  const [formData, setFormData] = useState({ name: "", age: "", position: "", number: "", photo: "" })
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [isSubmitting, setIsSubmitting] = useState(false)
 
@@ -44,10 +45,11 @@ export function PlayerForm({ onSuccess }: PlayerFormProps) {
         age: parseInt(formData.age),
         position: formData.position,
         number: parseInt(formData.number),
+        photo: formData.photo,
         team_id: null,
       })
       onSuccess("Player Added Successfully", `${formData.name} has been added to the roster`)
-      setFormData({ name: "", age: "", position: "", number: "" })
+      setFormData({ name: "", age: "", position: "", number: "", photo: "" })
     } catch {
       setErrors({ _global: "Something went wrong while saving the player. Please try again." })
     } finally {
@@ -99,6 +101,14 @@ export function PlayerForm({ onSuccess }: PlayerFormProps) {
             onChange={(e) => handleInputChange("number", e.target.value)}
             className={errors.number ? "border-destructive" : ""} />
           {errors.number && <FieldError>{errors.number}</FieldError>}
+        </Field>
+        <Field>
+          <FieldLabel>Photo (optional)</FieldLabel>
+          <LogoInput
+            value={formData.photo}
+            onChange={(url) => handleInputChange("photo", url)}
+            disabled={isSubmitting}
+          />
         </Field>
         <SubmitButton isSubmitting={isSubmitting} icon={<UserPlus className="mr-2 h-4 w-4" />} label="Add Player" loadingLabel="Adding Player..." />
       </FieldGroup>

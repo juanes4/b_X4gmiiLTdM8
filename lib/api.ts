@@ -18,6 +18,7 @@ export interface Player {
   age: number
   position: string
   number: number
+  photo?: string
   team_id: string | null
   team_name?: string
 }
@@ -112,7 +113,7 @@ export const teamsApi = {
 
 export const playersApi = {
   getAll: () => apiFetch<Player[]>("/players"),
-  create: (data: Omit<Player, "id" | "team_name">) =>
+  create: (data: Omit<Player, "id" | "team_name" | "photo"> & { photo?: string }) =>
     apiFetch<Player>("/players", { method: "POST", body: JSON.stringify(data) }),
   update: (id: string, data: Partial<Player>) =>
     apiFetch<Player>(`/players/${id}`, { method: "PUT", body: JSON.stringify(data) }),

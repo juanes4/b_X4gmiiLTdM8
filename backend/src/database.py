@@ -92,4 +92,10 @@ def init_db():
         cur.execute("ALTER TABLE matches ADD COLUMN winner_id INTEGER REFERENCES teams(id)")
         conn.commit()
 
+    # Migrate existing DB: add photo to players if missing
+    player_cols = [r[1] for r in cur.execute("PRAGMA table_info(players)").fetchall()]
+    if "photo" not in player_cols:
+        cur.execute("ALTER TABLE players ADD COLUMN photo TEXT")
+        conn.commit()
+
     conn.close()

@@ -9,6 +9,7 @@ import { Field, FieldLabel, FieldGroup, FieldError } from "@/components/ui/field
 import type { Player, Team, IPlayersMutations } from "@/lib/api"
 import { SkeletonRows, ErrorRow, EmptyRow } from "./table-states"
 import { useSectionState, RowActions, DeleteConfirmDialog, EditDialogFooter, stateBadgeVariant } from "./shared"
+import { LogoInput } from "@/components/ui/logo-input"
 
 const POSITIONS = ["Goalkeeper", "Defender", "Midfielder", "Forward"]
 
@@ -115,6 +116,16 @@ export function PlayersSection({ players, teams, loading, error, searchQuery, on
           </DialogHeader>
           {viewPlayer && (
             <div className="space-y-5 py-4">
+              {viewPlayer.photo && (
+                <div className="flex justify-center">
+                  <img
+                    src={viewPlayer.photo}
+                    alt={`${viewPlayer.name} photo`}
+                    className="h-24 w-24 object-cover rounded-full border bg-muted/40 p-1"
+                    onError={(e) => { (e.target as HTMLImageElement).style.display = "none" }}
+                  />
+                </div>
+              )}
               <div className="grid grid-cols-2 gap-4">
                 <div><p className="text-sm text-muted-foreground">Name</p><p className="font-medium">{viewPlayer.name}</p></div>
                 <div><p className="text-sm text-muted-foreground">Age</p><p className="font-medium">{viewPlayer.age ?? "—"}</p></div>
@@ -182,6 +193,14 @@ export function PlayersSection({ players, teams, loading, error, searchQuery, on
                   </SelectContent>
                 </Select>
                 {editErrors.position && <FieldError>{editErrors.position}</FieldError>}
+              </Field>
+              <Field>
+                <FieldLabel>Photo (optional)</FieldLabel>
+                <LogoInput
+                  value={editPlayer.photo ?? ""}
+                  onChange={(url) => setEditPlayer({ ...editPlayer, photo: url })}
+                  disabled={isSaving}
+                />
               </Field>
             </FieldGroup>
           )}
