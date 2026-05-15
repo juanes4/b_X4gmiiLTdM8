@@ -37,9 +37,9 @@ export function LeagueForm({ onSuccess }: LeagueFormProps) {
     const e: Record<string, string> = {}
     if (!formData.name.trim()) e.name = "Please enter the league name"
     else if (formData.name.trim().length < 2) e.name = "League name must be at least 2 characters"
-    if (formData.teams.length < 2) e.teams = "Add at least 2 teams to create a league"
+    if (formData.teams.length < 2) e.teams = "You need to add at least 2 teams to create a league"
     if (formData.start_date && formData.end_date && formData.end_date <= formData.start_date)
-      e.end_date = "End date must be after start date"
+      e.end_date = "The end date must be after the start date"
     setErrors(e)
     return Object.keys(e).length === 0
   }
@@ -72,6 +72,14 @@ export function LeagueForm({ onSuccess }: LeagueFormProps) {
 
   const addTeam = (teamId: string) => {
     if (!formData.teams.includes(teamId)) {
+      const team = availableTeams.find((t) => String(t.id) === teamId)
+      if (team && (team.player_count ?? 0) < 11) {
+        setErrors((prev) => ({
+          ...prev,
+          teams: `'${team.name}' needs at least 11 players to join a league (currently has ${team.player_count ?? 0}). Add players first via Edit Team.`,
+        }))
+        return
+      }
       setFormData((prev) => ({ ...prev, teams: [...prev.teams, teamId] }))
       if (errors.teams) setErrors((prev) => ({ ...prev, teams: "" }))
     }
@@ -226,11 +234,18 @@ export function LeagueForm({ onSuccess }: LeagueFormProps) {
                     {teamSearch ? "No teams found" : "No teams available"}
                   </div>
                 ) : (
-                  getSelectableTeams().map((t) => (
-                    <SelectItem key={t.id} value={String(t.id)}>
-                      {t.name} ({t.abbreviation})
-                    </SelectItem>
-                  ))
+                  getSelectableTeams().map((t) => {
+                    const count = t.player_count ?? 0
+                    const ineligible = count < 11
+                    return (
+                      <SelectItem key={t.id} value={String(t.id)}>
+                        <span className={ineligible ? "text-amber-600 dark:text-amber-400" : ""}>
+                          {t.name} ({t.abbreviation})
+                          {ineligible && ` — ⚠ ${count}/11 players`}
+                        </span>
+                      </SelectItem>
+                    )
+                  })
                 )}
               </SelectContent>
             </Select>

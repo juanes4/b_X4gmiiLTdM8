@@ -64,7 +64,7 @@ export function TeamForm({ onSuccess }: TeamFormProps) {
     else if (formData.abbreviation.length > 5) e.abbreviation = "The abbreviation cannot be longer than 5 characters"
     if (formData.logo && !isValidLogoValue(formData.logo)) e.logo = "The logo link doesn't look like a valid web address"
     if (!formData.state) e.state = "Please select a status for the team"
-    if (formData.players.length < MIN_PLAYERS) e.players = `You need to select at least ${MIN_PLAYERS} players (${formData.players.length} selected so far)`
+    if (formData.players.length < MIN_PLAYERS) e.players = `You need to select ${MIN_PLAYERS} players (${formData.players.length} selected so far)`
     setErrors(e)
     return Object.keys(e).length === 0
   }

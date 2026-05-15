@@ -17,10 +17,10 @@ export function ManagementSection() {
   const [activeTab, setActiveTab] = useState("teams")
   const [searchQuery, setSearchQuery] = useState("")
 
-  const { data: teams, loading: loadingTeams, error: errorTeams, refetch: fetchTeams } = useFetchData(teamsApi.getAll, "Failed to load teams")
-  const { data: players, loading: loadingPlayers, error: errorPlayers, refetch: fetchPlayers } = useFetchData(playersApi.getAll, "Failed to load players")
-  const { data: matches, loading: loadingMatches, error: errorMatches, refetch: fetchMatches } = useFetchData(matchesApi.getAll, "Failed to load matches")
-  const { data: leagues, loading: loadingLeagues, error: errorLeagues, refetch: fetchLeagues } = useFetchData(leaguesApi.getAll, "Failed to load leagues")
+  const { data: teams, loading: loadingTeams, error: errorTeams, refetch: fetchTeams } = useFetchData(teamsApi.getAll, "Could not load teams. Please try again.")
+  const { data: players, loading: loadingPlayers, error: errorPlayers, refetch: fetchPlayers } = useFetchData(playersApi.getAll, "Could not load players. Please try again.")
+  const { data: matches, loading: loadingMatches, error: errorMatches, refetch: fetchMatches } = useFetchData(matchesApi.getAll, "Could not load matches. Please try again.")
+  const { data: leagues, loading: loadingLeagues, error: errorLeagues, refetch: fetchLeagues } = useFetchData(leaguesApi.getAll, "Could not load leagues. Please try again.")
 
   const refreshTeams = useCallback(() => { fetchTeams(); fetchPlayers() }, [fetchTeams, fetchPlayers])
   const refreshPlayers = useCallback(() => { fetchPlayers(); fetchTeams() }, [fetchPlayers, fetchTeams])

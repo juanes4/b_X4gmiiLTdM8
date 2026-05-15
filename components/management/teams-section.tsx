@@ -1,11 +1,14 @@
 "use client"
 
+import { useState } from "react"
 import { Input } from "@/components/ui/input"
+import { Button } from "@/components/ui/button"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Field, FieldLabel, FieldGroup, FieldError } from "@/components/ui/field"
+import { Search } from "lucide-react"
 import type { Team, Player, ITeamsMutations } from "@/lib/api"
 import { SkeletonRows, ErrorRow, EmptyRow } from "./table-states"
 import { useSectionState, RowActions, DeleteConfirmDialog, EditDialogFooter, stateBadgeVariant } from "./shared"
@@ -26,6 +29,12 @@ interface TeamsSectionProps {
 export function TeamsSection({ teams, players, loading, error, searchQuery, onRefresh, api }: TeamsSectionProps) {
   const { viewItem: viewTeam, setViewItem: setViewTeam, editItem: editTeam, setEditItem: setEditTeam, deleteItem, setDeleteItem, editErrors, setEditErrors, isSaving, setIsSaving, isDeleting, setIsDeleting } = useSectionState<Team>()
 
+  const [originalTeam, setOriginalTeam] = useState<Team | null>(null)
+  const [stagedPlayers, setStagedPlayers] = useState<Player[]>([])
+  const [stagedPlayerIds, setStagedPlayerIds] = useState<Set<string>>(new Set())
+  const [playerSearch, setPlayerSearch] = useState("")
+  const [showUnsavedWarning, setShowUnsavedWarning] = useState(false)
+
   const filtered = teams.filter((t) =>
     t.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
     t.country.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -40,6 +49,55 @@ export function TeamsSection({ teams, players, loading, error, searchQuery, onRe
     try { new URL(s); return true } catch { return false }
   }
 
+  const hasUnsavedChanges = (): boolean => {
+    if (!editTeam || !originalTeam) return false
+    if (stagedPlayers.length > 0) return true
+    return (
+      editTeam.name !== originalTeam.name ||
+      editTeam.country !== originalTeam.country ||
+      editTeam.city !== originalTeam.city ||
+      editTeam.abbreviation !== originalTeam.abbreviation ||
+      editTeam.state !== originalTeam.state ||
+      (editTeam.logo ?? "") !== (originalTeam.logo ?? "")
+    )
+  }
+
+  const openEdit = (team: Team) => {
+    setEditErrors({})
+    setStagedPlayers([])
+    setStagedPlayerIds(new Set())
+    setPlayerSearch("")
+    setOriginalTeam({ ...team })
+    setEditTeam({ ...team })
+  }
+
+  const closeEdit = () => {
+    setEditTeam(null)
+    setOriginalTeam(null)
+    setStagedPlayers([])
+    setStagedPlayerIds(new Set())
+    setPlayerSearch("")
+    setShowUnsavedWarning(false)
+  }
+
+  const handleCloseAttempt = () => {
+    if (isSaving) return
+    if (hasUnsavedChanges()) {
+      setShowUnsavedWarning(true)
+    } else {
+      closeEdit()
+    }
+  }
+
+  const handleAddPlayer = (playerId: string) => {
+    if (!playerId || stagedPlayerIds.has(playerId)) return
+    const player = players.find((p) => String(p.id) === playerId)
+    if (!player) return
+    setStagedPlayers((prev) => [...prev, player])
+    setStagedPlayerIds((prev) => new Set([...prev, playerId]))
+    setPlayerSearch("")
+  }
+
   const handleSave = async () => {
     if (!editTeam) return
     const errors: Record<string, string> = {}
@@ -52,8 +110,29 @@ export function TeamsSection({ teams, players, loading, error, searchQuery, onRe
     setIsSaving(true)
     try {
       await api.update(editTeam.id, editTeam)
+
+      if (stagedPlayers.length > 0) {
+        const results = await Promise.allSettled(
+          stagedPlayers.map((p) => api.addPlayer(editTeam.id, String(p.id)))
+        )
+        const failedIndices = results
+          .map((r, i) => (r.status === "rejected" ? i : -1))
+          .filter((i) => i !== -1)
+
+        if (failedIndices.length > 0) {
+          const stillStaged = failedIndices.map((i) => stagedPlayers[i])
+          setStagedPlayers(stillStaged)
+          setStagedPlayerIds(new Set(stillStaged.map((p) => String(p.id))))
+          const reason = (results[failedIndices[0]] as PromiseRejectedResult).reason
+          const msg = reason instanceof Error ? reason.message : String(reason)
+          setEditErrors({ _global: `${failedIndices.length} player(s) could not be added: ${msg}` })
+          onRefresh()
+          return
+        }
+      }
+
       onRefresh()
-      setEditTeam(null)
+      closeEdit()
     } catch (err) {
       setEditErrors({ _global: err instanceof Error ? err.message : "Save failed" })
     } finally {
@@ -72,6 +151,23 @@ export function TeamsSection({ teams, players, loading, error, searchQuery, onRe
       setDeleteItem(null)
     }
   }
+
+  // Computed values for the edit dialog
+  const existingSquad = editTeam ? squadOf(editTeam) : []
+  const existingIds = new Set(existingSquad.map((p) => String(p.id)))
+  const currentSquad = [
+    ...existingSquad,
+    ...stagedPlayers.filter((p) => !existingIds.has(String(p.id))),
+  ]
+  const unassignedPlayers = players.filter(
+    (p) => !p.team_id && !stagedPlayerIds.has(String(p.id))
+  )
+  const filteredUnassigned = unassignedPlayers.filter(
+    (p) =>
+      playerSearch === "" ||
+      p.name.toLowerCase().includes(playerSearch.toLowerCase()) ||
+      p.position.toLowerCase().includes(playerSearch.toLowerCase())
+  )
 
   return (
     <>
@@ -104,7 +200,7 @@ export function TeamsSection({ teams, players, loading, error, searchQuery, onRe
                   <TableCell className="text-right">
                     <RowActions
                       onView={() => setViewTeam(team)}
-                      onEdit={() => { setEditErrors({}); setEditTeam({ ...team }) }}
+                      onEdit={() => openEdit(team)}
                       onDelete={() => setDeleteItem({ id: team.id, name: team.name })}
                     />
                   </TableCell>
@@ -167,8 +263,8 @@ export function TeamsSection({ teams, players, loading, error, searchQuery, onRe
       </Dialog>
 
       {/* Edit Dialog */}
-      <Dialog open={!!editTeam} onOpenChange={(open) => !open && setEditTeam(null)}>
-        <DialogContent>
+      <Dialog open={!!editTeam} onOpenChange={(open) => { if (!open) handleCloseAttempt() }}>
+        <DialogContent className="sm:max-w-xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Edit Team</DialogTitle>
             <DialogDescription>Make changes to the record below</DialogDescription>
@@ -225,9 +321,112 @@ export function TeamsSection({ teams, players, loading, error, searchQuery, onRe
                 />
                 {editErrors.logo && <FieldError>{editErrors.logo}</FieldError>}
               </Field>
+
+              {/* Squad management */}
+              <div className="space-y-2 pt-3 border-t">
+                <div className="flex items-center justify-between">
+                  <p className="text-sm font-medium">
+                    Squad <span className="text-muted-foreground">({currentSquad.length})</span>
+                  </p>
+                  {currentSquad.length < 11 && (
+                    <span className="text-xs text-amber-600 dark:text-amber-400">
+                      {11 - currentSquad.length} more needed for league eligibility
+                    </span>
+                  )}
+                </div>
+
+                <Select value="" onValueChange={handleAddPlayer} disabled={unassignedPlayers.length === 0}>
+                  <SelectTrigger>
+                    <SelectValue placeholder={
+                      unassignedPlayers.length === 0 ? "No available players" : "Add a player..."
+                    } />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <div className="flex items-center border-b px-3 pb-2">
+                      <Search className="mr-2 h-4 w-4 shrink-0 opacity-50" />
+                      <input
+                        placeholder="Search players..."
+                        value={playerSearch}
+                        onChange={(e) => setPlayerSearch(e.target.value)}
+                        className="flex h-8 w-full rounded-md bg-transparent py-3 text-sm outline-none placeholder:text-muted-foreground"
+                      />
+                    </div>
+                    {filteredUnassigned.length === 0 ? (
+                      <div className="py-6 text-center text-sm text-muted-foreground">
+                        {playerSearch ? "No players found" : "No available players"}
+                      </div>
+                    ) : (
+                      filteredUnassigned.map((p) => (
+                        <SelectItem key={p.id} value={String(p.id)}>
+                          <span className="font-medium text-muted-foreground">#{p.number ?? "—"}</span>
+                          <span className="ml-2">{p.name}</span>
+                          <span className="ml-2 text-muted-foreground text-xs">· {p.position}</span>
+                        </SelectItem>
+                      ))
+                    )}
+                  </SelectContent>
+                </Select>
+
+                {currentSquad.length > 0 ? (
+                  <div className="grid grid-cols-2 gap-1 max-h-44 overflow-y-auto pr-0.5">
+                    {currentSquad.map((p) => {
+                      const isStaged = stagedPlayerIds.has(String(p.id))
+                      return (
+                        <div
+                          key={p.id}
+                          className={`flex items-center justify-between rounded-md border px-2 py-1.5 text-xs ${
+                            isStaged
+                              ? "border-emerald-300 bg-emerald-50 text-emerald-800 dark:border-emerald-700 dark:bg-emerald-950 dark:text-emerald-200"
+                              : "border-border bg-muted/40"
+                          }`}
+                        >
+                          <span className="flex items-center gap-1.5 min-w-0">
+                            <span className="text-muted-foreground w-5 shrink-0">#{p.number ?? "—"}</span>
+                            <span className="truncate font-medium">{p.name}</span>
+                          </span>
+                          <Badge
+                            variant="outline"
+                            className={`text-xs ml-1.5 shrink-0 ${isStaged ? "border-emerald-400 text-emerald-700 dark:border-emerald-600 dark:text-emerald-300" : ""}`}
+                          >
+                            {p.position}
+                          </Badge>
+                        </div>
+                      )
+                    })}
+                  </div>
+                ) : (
+                  <p className="text-xs text-muted-foreground">No players yet. Use the dropdown above to add players.</p>
+                )}
+
+                {stagedPlayers.length > 0 && (
+                  <p className="text-xs text-emerald-700 dark:text-emerald-400">
+                    {stagedPlayers.length} player{stagedPlayers.length > 1 ? "s" : ""} staged — click Save Changes to confirm
+                  </p>
+                )}
+              </div>
             </FieldGroup>
           )}
-          <EditDialogFooter isSaving={isSaving} onCancel={() => setEditTeam(null)} onSave={handleSave} />
+          <EditDialogFooter isSaving={isSaving} onCancel={handleCloseAttempt} onSave={handleSave} />
+        </DialogContent>
+      </Dialog>
+
+      {/* Unsaved changes warning */}
+      <Dialog open={showUnsavedWarning} onOpenChange={(open) => { if (!open) setShowUnsavedWarning(false) }}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Unsaved changes</DialogTitle>
+            <DialogDescription>
+              You have unsaved changes. If you close now, all changes will be lost.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex justify-end gap-2 pt-2">
+            <Button variant="outline" onClick={() => setShowUnsavedWarning(false)}>
+              Keep editing
+            </Button>
+            <Button variant="destructive" onClick={closeEdit}>
+              Discard changes
+            </Button>
+          </div>
         </DialogContent>
       </Dialog>
 

@@ -10,6 +10,7 @@ export interface Team {
   abbreviation: string
   logo?: string
   state: string
+  player_count?: number
 }
 
 export interface Player {
@@ -101,6 +102,7 @@ export interface LeagueRoundsResponse {
 export interface ITeamsMutations {
   update: (id: string, data: Partial<Team>) => Promise<Team>
   delete: (id: string) => Promise<{ deleted: number }>
+  addPlayer: (teamId: string, playerId: string) => Promise<{ added: number }>
 }
 
 export interface IPlayersMutations {
@@ -131,10 +133,15 @@ export interface ILeaguesMutations {
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
 async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
-  const res = await fetch(`${API_URL}${path}`, {
-    headers: { "Content-Type": "application/json" },
-    ...options,
-  })
+  let res: Response
+  try {
+    res = await fetch(`${API_URL}${path}`, {
+      headers: { "Content-Type": "application/json" },
+      ...options,
+    })
+  } catch {
+    throw new Error("Could not connect to the server. Please check your connection and try again.")
+  }
   if (!res.ok) {
     const err = await res.json().catch(() => ({ error: res.statusText }))
     throw new Error(err.error || `Request failed: ${res.status}`)
@@ -152,6 +159,8 @@ export const teamsApi = {
     apiFetch<Team>(`/teams/${id}`, { method: "PUT", body: JSON.stringify(data) }),
   delete: (id: string) =>
     apiFetch<{ deleted: number }>(`/teams/${id}`, { method: "DELETE" }),
+  addPlayer: (teamId: string, playerId: string) =>
+    apiFetch<{ added: number }>(`/teams/${teamId}/players`, { method: "POST", body: JSON.stringify({ player_id: playerId }) }),
 }
 
 // ── Players ────────────────────────────────────────────────────────────────────

@@ -60,20 +60,20 @@ export function AddMatchForm() {
     }
 
     if (formData.team1 && formData.team2 && formData.team1 === formData.team2) {
-      newErrors.teams = "Teams must be different"
+      newErrors.teams = "You cannot select the same team twice — please choose two different teams"
     }
 
     if (formData.score_team1 !== "") {
       const score = parseInt(formData.score_team1)
       if (isNaN(score) || score < 0) {
-        newErrors.score_team1 = "Score must be 0 or greater"
+        newErrors.score_team1 = "The score must be a whole number (0 or higher)"
       }
     }
 
     if (formData.score_team2 !== "") {
       const score = parseInt(formData.score_team2)
       if (isNaN(score) || score < 0) {
-        newErrors.score_team2 = "Score must be 0 or greater"
+        newErrors.score_team2 = "The score must be a whole number (0 or higher)"
       }
     }
 
@@ -105,7 +105,7 @@ export function AddMatchForm() {
         setIsSuccess(false)
       }, 2500)
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : "Failed to create match"
+      const msg = err instanceof Error ? err.message : "Something went wrong while creating the match. Please try again."
       setErrors((prev) => ({ ...prev, _global: msg }))
     } finally {
       setIsSubmitting(false)

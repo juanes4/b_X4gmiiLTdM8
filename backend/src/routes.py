@@ -18,7 +18,11 @@ def rows_to_list(rows):
 @api.get("/teams")
 def get_teams():
     conn = get_db()
-    teams = rows_to_list(conn.execute("SELECT * FROM teams ORDER BY name").fetchall())
+    teams = rows_to_list(conn.execute(
+        """SELECT t.*,
+           (SELECT COUNT(*) FROM player_teams WHERE team_id = t.id) as player_count
+           FROM teams t ORDER BY t.name"""
+    ).fetchall())
     conn.close()
     return jsonify(teams)
 
@@ -46,16 +50,17 @@ def create_team():
         if not data.get(f):
             return jsonify({"error": f"{f} is required"}), 400
 
-    players = data.get("players", [])
-
-    # Validate at least 11 players
-    if len(players) < 11:
-        return jsonify({"error": f"At least 11 players required, got {len(players)}"}), 400
-
-    # Validate no duplicate player IDs in request
+    # Only validate player requirements when players are explicitly provided (form creation).
+    # Bulk import omits the players key entirely, allowing teams to be created player-free.
+    players_raw = data.get("players")
+    if players_raw is not None:
+        if len(players_raw) < 11:
+            return jsonify({"error": f"At least 11 players required, got {len(players_raw)}"}), 400
+        player_ids_check = [p["id"] for p in players_raw if p.get("id")]
+        if len(player_ids_check) != len(set(player_ids_check)):
+            return jsonify({"error": "Duplicate players in request"}), 400
+    players = players_raw or []
     player_ids = [p["id"] for p in players if p.get("id")]
-    if len(player_ids) != len(set(player_ids)):
-        return jsonify({"error": "Duplicate players in request"}), 400
 
     conn = get_db()
     try:
@@ -108,6 +113,36 @@ def update_team(team_id):
     if not team:
         return jsonify({"error": "Team not found"}), 404
     return jsonify(team)
+
+
+@api.post("/teams/<int:team_id>/players")
+def add_player_to_team(team_id):
+    data = request.json or {}
+    player_id = data.get("player_id")
+    if not player_id:
+        return jsonify({"error": "player_id required"}), 400
+    conn = get_db()
+    try:
+        team = row_to_dict(conn.execute("SELECT * FROM teams WHERE id=?", (team_id,)).fetchone())
+        if not team:
+            conn.close()
+            return jsonify({"error": "Team not found"}), 404
+        player = row_to_dict(conn.execute("SELECT * FROM players WHERE id=?", (player_id,)).fetchone())
+        if not player:
+            conn.close()
+            return jsonify({"error": "Player not found"}), 404
+        existing = conn.execute("SELECT team_id FROM player_teams WHERE player_id=?", (player_id,)).fetchone()
+        if existing:
+            conn.close()
+            return jsonify({"error": "Player is already assigned to a team"}), 400
+        conn.execute("INSERT INTO player_teams (player_id, team_id) VALUES (?,?)", (player_id, team_id))
+        conn.commit()
+    except Exception as e:
+        conn.rollback()
+        conn.close()
+        return jsonify({"error": str(e)}), 500
+    conn.close()
+    return jsonify({"added": player_id}), 201
 
 
 @api.delete("/teams/<int:team_id>")
@@ -228,6 +263,16 @@ def create_league():
 
     conn = get_db()
     try:
+        for team_id in teams:
+            count = conn.execute(
+                "SELECT COUNT(*) as cnt FROM player_teams WHERE team_id=?", (team_id,)
+            ).fetchone()["cnt"]
+            if count < 11:
+                team_row = row_to_dict(conn.execute("SELECT name FROM teams WHERE id=?", (team_id,)).fetchone())
+                team_name = team_row["name"] if team_row else f"Team {team_id}"
+                conn.close()
+                return jsonify({"error": f"'{team_name}' needs at least 11 players to join a league (currently has {count})"}), 400
+
         cur = conn.execute(
             "INSERT INTO leagues (name, state, current_round, start_date, end_date) VALUES (?,?,?,?,?)",
             (data["name"], data.get("state", "active"), 0,
@@ -262,6 +307,18 @@ def create_league():
 def update_league(league_id):
     data = request.json
     conn = get_db()
+
+    if "teams" in data:
+        for tid in data["teams"]:
+            count = conn.execute(
+                "SELECT COUNT(*) as cnt FROM player_teams WHERE team_id=?", (tid,)
+            ).fetchone()["cnt"]
+            if count < 11:
+                team_row = row_to_dict(conn.execute("SELECT name FROM teams WHERE id=?", (tid,)).fetchone())
+                team_name = team_row["name"] if team_row else f"Team {tid}"
+                conn.close()
+                return jsonify({"error": f"'{team_name}' needs at least 11 players to join a league (currently has {count})"}), 400
+
     conn.execute(
         "UPDATE leagues SET name=COALESCE(?,name), state=COALESCE(?,state), current_round=COALESCE(?,current_round) WHERE id=?",
         (data.get("name"), data.get("state"), data.get("current_round"), league_id)

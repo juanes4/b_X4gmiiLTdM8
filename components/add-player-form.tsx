@@ -44,27 +44,27 @@ export function AddPlayerForm() {
     const newErrors: FormErrors = {}
 
     if (!formData.name.trim()) {
-      newErrors.name = "Name is required"
+      newErrors.name = "Please enter the player's name"
     } else if (formData.name.trim().length < 2) {
-      newErrors.name = "Name must be at least 2 characters"
+      newErrors.name = "The player's name must be at least 2 characters long"
     }
 
     const age = parseInt(formData.age)
     if (!formData.age) {
-      newErrors.age = "Age is required"
+      newErrors.age = "Please enter the player's age"
     } else if (isNaN(age) || age < 15 || age > 50) {
-      newErrors.age = "Age must be between 15 and 50"
+      newErrors.age = "Age must be a number between 15 and 50"
     }
 
     if (!formData.position) {
-      newErrors.position = "Position is required"
+      newErrors.position = "Please select the player's position"
     }
 
     const number = parseInt(formData.number)
     if (!formData.number) {
-      newErrors.number = "Number is required"
+      newErrors.number = "Please enter the player's jersey number"
     } else if (isNaN(number) || number < 1 || number > 99) {
-      newErrors.number = "Number must be between 1 and 99"
+      newErrors.number = "Jersey number must be between 1 and 99"
     }
 
     setErrors(newErrors)

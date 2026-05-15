@@ -98,7 +98,7 @@ export function LeagueMatchesPage({ onBack }: LeagueMatchesPageProps) {
       setInputs(newInputs)
       setInputErrors({})
     } catch {
-      setError("Failed to load league data")
+      setError("Could not load the league data. Please try again.")
     } finally {
       setLoading(false)
     }
@@ -159,7 +159,7 @@ export function LeagueMatchesPage({ onBack }: LeagueMatchesPageProps) {
     } catch (err) {
       setInputErrors((prev) => ({
         ...prev,
-        [match.id]: err instanceof Error ? err.message : "Save failed",
+        [match.id]: err instanceof Error ? err.message : "Could not save the result. Please try again.",
       }))
     } finally {
       setSavingId(null)
@@ -179,7 +179,7 @@ export function LeagueMatchesPage({ onBack }: LeagueMatchesPageProps) {
     } catch (err) {
       setInputErrors((prev) => ({
         ...prev,
-        [match.id]: err instanceof Error ? err.message : "Save failed",
+        [match.id]: err instanceof Error ? err.message : "Could not save the result. Please try again.",
       }))
     } finally {
       setSavingMetaId(null)
@@ -193,7 +193,7 @@ export function LeagueMatchesPage({ onBack }: LeagueMatchesPageProps) {
       await leaguesApi.advanceRound(selectedId)
       await loadLeague(selectedId)
     } catch (err) {
-      setAdvanceError(err instanceof Error ? err.message : "Could not advance round")
+      setAdvanceError(err instanceof Error ? err.message : "Could not advance to the next round. Please try again.")
     } finally {
       setAdvancing(false)
     }
