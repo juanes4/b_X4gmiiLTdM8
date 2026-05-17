@@ -6,7 +6,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Field, FieldLabel, FieldGroup, FieldError } from "@/components/ui/field"
 import { UserPlus } from "lucide-react"
 import { playersApi } from "@/lib/api"
-import { FormHeader, SubmitButton } from "./shared"
+import { FormHeader, RequiredMark, RequiredNote, SubmitButton } from "./shared"
 import { LogoInput } from "@/components/ui/logo-input"
 
 const POSITIONS = ["Goalkeeper", "Defender", "Midfielder", "Forward"]
@@ -35,7 +35,7 @@ export function PlayerForm({ onSuccess }: PlayerFormProps) {
     return Object.keys(e).length === 0
   }
 
-  const handleSubmit = async (ev: React.FormEvent) => {
+  const handleSubmit = async (ev: React.FormEvent<HTMLFormElement>) => {
     ev.preventDefault()
     if (!validateForm()) return
     setIsSubmitting(true)
@@ -50,8 +50,8 @@ export function PlayerForm({ onSuccess }: PlayerFormProps) {
       })
       onSuccess("Player Added Successfully", `${formData.name} has been added to the roster`)
       setFormData({ name: "", age: "", position: "", number: "", photo: "" })
-    } catch {
-      setErrors({ _global: "Something went wrong while saving the player. Please try again." })
+    } catch (err) {
+      setErrors({ _global: err instanceof Error ? err.message : "Something went wrong while saving the player. Please try again." })
     } finally {
       setIsSubmitting(false)
     }
@@ -65,26 +65,27 @@ export function PlayerForm({ onSuccess }: PlayerFormProps) {
   return (
     <form onSubmit={handleSubmit}>
       <FormHeader icon={<UserPlus className="h-6 w-6 text-primary" />} title="Add New Player" description="Enter the player details below" />
+      <RequiredNote />
 
       {errors._global && <p className="text-sm text-destructive mb-4">{errors._global}</p>}
 
       <FieldGroup>
         <Field>
-          <FieldLabel htmlFor="player-name">Name</FieldLabel>
+          <FieldLabel htmlFor="player-name">Name<RequiredMark /></FieldLabel>
           <Input id="player-name" placeholder="Enter player name" value={formData.name}
             onChange={(e) => handleInputChange("name", e.target.value)}
             className={errors.name ? "border-destructive" : ""} />
           {errors.name && <FieldError>{errors.name}</FieldError>}
         </Field>
         <Field>
-          <FieldLabel htmlFor="player-age">Age</FieldLabel>
+          <FieldLabel htmlFor="player-age">Age<RequiredMark /></FieldLabel>
           <Input id="player-age" type="number" placeholder="Enter age" min={15} max={50} value={formData.age}
             onChange={(e) => handleInputChange("age", e.target.value)}
             className={errors.age ? "border-destructive" : ""} />
           {errors.age && <FieldError>{errors.age}</FieldError>}
         </Field>
         <Field>
-          <FieldLabel htmlFor="player-position">Position</FieldLabel>
+          <FieldLabel htmlFor="player-position">Position<RequiredMark /></FieldLabel>
           <Select value={formData.position} onValueChange={(v) => handleInputChange("position", v)}>
             <SelectTrigger id="player-position" className={errors.position ? "border-destructive" : ""}>
               <SelectValue placeholder="Select a position" />
@@ -96,7 +97,7 @@ export function PlayerForm({ onSuccess }: PlayerFormProps) {
           {errors.position && <FieldError>{errors.position}</FieldError>}
         </Field>
         <Field>
-          <FieldLabel htmlFor="player-number">Jersey Number</FieldLabel>
+          <FieldLabel htmlFor="player-number">Jersey Number<RequiredMark /></FieldLabel>
           <Input id="player-number" type="number" placeholder="Enter jersey number" min={1} max={99} value={formData.number}
             onChange={(e) => handleInputChange("number", e.target.value)}
             className={errors.number ? "border-destructive" : ""} />

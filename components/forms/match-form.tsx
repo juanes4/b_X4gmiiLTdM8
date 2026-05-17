@@ -6,7 +6,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Field, FieldLabel, FieldGroup, FieldError } from "@/components/ui/field"
 import { Trophy } from "lucide-react"
 import { teamsApi, matchesApi, leaguesApi } from "@/lib/api"
-import { FormHeader, SubmitButton } from "./shared"
+import { FormHeader, RequiredMark, RequiredNote, SubmitButton } from "./shared"
 import type { Team, League } from "@/lib/api"
 
 interface MatchFormProps {
@@ -68,8 +68,8 @@ export function MatchForm({ onSuccess }: MatchFormProps) {
       const t2 = teams.find((t) => String(t.id) === formData.team2)?.name || ""
       onSuccess("Match Created", `${t1} vs ${t2}`)
       setFormData({ team1: "", team2: "", league_id: "", score_team1: "", score_team2: "" })
-    } catch {
-      setErrors({ _global: "Something went wrong while saving the match. Please try again." })
+    } catch (err) {
+      setErrors({ _global: err instanceof Error ? err.message : "Something went wrong while saving the match. Please try again." })
     } finally {
       setIsSubmitting(false)
     }
@@ -86,6 +86,7 @@ export function MatchForm({ onSuccess }: MatchFormProps) {
   return (
     <form onSubmit={handleSubmit}>
       <FormHeader icon={<Trophy className="h-6 w-6 text-primary" />} title="Add New Match" description="Create a match between two teams" />
+      <RequiredNote />
 
       {errors._global && <p className="text-sm text-destructive mb-4">{errors._global}</p>}
 
@@ -93,7 +94,7 @@ export function MatchForm({ onSuccess }: MatchFormProps) {
         <div className="space-y-4">
           <p className="text-sm font-medium text-muted-foreground">Teams</p>
           <Field>
-            <FieldLabel htmlFor="match-team1">Team 1</FieldLabel>
+            <FieldLabel htmlFor="match-team1">Team 1<RequiredMark /></FieldLabel>
             <Select value={formData.team1} onValueChange={(v) => handleInputChange("team1", v)}>
               <SelectTrigger id="match-team1" className={errors.team1 || errors.teams ? "border-destructive" : ""}>
                 <SelectValue placeholder={loadingTeams ? "Loading teams..." : "Select team"} />
@@ -107,7 +108,7 @@ export function MatchForm({ onSuccess }: MatchFormProps) {
             {errors.team1 && <FieldError>{errors.team1}</FieldError>}
           </Field>
           <Field>
-            <FieldLabel htmlFor="match-team2">Team 2</FieldLabel>
+            <FieldLabel htmlFor="match-team2">Team 2<RequiredMark /></FieldLabel>
             <Select value={formData.team2} onValueChange={(v) => handleInputChange("team2", v)}>
               <SelectTrigger id="match-team2" className={errors.team2 || errors.teams ? "border-destructive" : ""}>
                 <SelectValue placeholder={loadingTeams ? "Loading teams..." : "Select team"} />

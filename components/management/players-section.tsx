@@ -10,6 +10,7 @@ import type { Player, Team, IPlayersMutations } from "@/lib/api"
 import { SkeletonRows, ErrorRow, EmptyRow } from "./table-states"
 import { useSectionState, RowActions, DeleteConfirmDialog, EditDialogFooter, stateBadgeVariant } from "./shared"
 import { LogoInput } from "@/components/ui/logo-input"
+import { RequiredMark, RequiredNote } from "../forms/shared"
 
 const POSITIONS = ["Goalkeeper", "Defender", "Midfielder", "Forward"]
 
@@ -159,10 +160,11 @@ export function PlayersSection({ players, teams, loading, error, searchQuery, on
             <DialogDescription>Make changes to the record below</DialogDescription>
           </DialogHeader>
           {editErrors._global && <p className="text-sm text-destructive px-1">{editErrors._global}</p>}
+          <RequiredNote />
           {editPlayer && (
             <FieldGroup>
               <Field>
-                <FieldLabel htmlFor="edit-player-name">Name</FieldLabel>
+                <FieldLabel htmlFor="edit-player-name">Name<RequiredMark /></FieldLabel>
                 <Input id="edit-player-name" value={editPlayer.name}
                   onChange={(e) => setEditPlayer({ ...editPlayer, name: e.target.value })}
                   className={editErrors.name ? "border-destructive" : ""} />
@@ -170,7 +172,7 @@ export function PlayersSection({ players, teams, loading, error, searchQuery, on
               </Field>
               <div className="grid grid-cols-2 gap-4">
                 <Field>
-                  <FieldLabel htmlFor="edit-player-age">Age</FieldLabel>
+                  <FieldLabel htmlFor="edit-player-age">Age<RequiredMark /></FieldLabel>
                   <Input id="edit-player-age" type="number" min={15} max={50} value={editPlayer.age}
                     onChange={(e) => setEditPlayer({ ...editPlayer, age: parseInt(e.target.value) || 0 })}
                     className={editErrors.age ? "border-destructive" : ""} />
@@ -183,7 +185,7 @@ export function PlayersSection({ players, teams, loading, error, searchQuery, on
                 </Field>
               </div>
               <Field>
-                <FieldLabel htmlFor="edit-player-position">Position</FieldLabel>
+                <FieldLabel htmlFor="edit-player-position">Position<RequiredMark /></FieldLabel>
                 <Select value={editPlayer.position} onValueChange={(v) => setEditPlayer({ ...editPlayer, position: v })}>
                   <SelectTrigger id="edit-player-position" className={editErrors.position ? "border-destructive" : ""}>
                     <SelectValue />

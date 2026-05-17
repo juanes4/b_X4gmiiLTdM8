@@ -78,7 +78,7 @@ function validatePlayer(raw: Record<string, unknown>): PlayerRow {
   const ageStr = normalizeKey(raw, "age", "edad")
   const age = parseInt(ageStr, 10)
   if (!ageStr || isNaN(age)) errors.push("Age must be a valid number")
-  else if (age < 15 || age > 50) errors.push("Age must be between 15 and 50")
+  else if (age < 15 || age > 50) errors.push("Age must be a number between 15 and 50")
 
   const posRaw = normalizeKey(raw, "position", "posicion", "pos")
   const position = POSITIONS.find(p => p.toLowerCase() === posRaw.toLowerCase()) ?? posRaw
@@ -114,8 +114,8 @@ function validateTeam(raw: Record<string, unknown>): TeamRow {
   if (!city) errors.push("City is required")
 
   const abbreviation = normalizeKey(raw, "abbreviation", "abbr", "abreviacion").toUpperCase()
-  if (!abbreviation) errors.push("Abbreviation is required")
-  else if (abbreviation.length > 5) errors.push("Abbreviation must be 5 characters or less")
+  if (!abbreviation) errors.push("Please enter an abbreviation (e.g. FCB)")
+  else if (abbreviation.length > 5) errors.push("The abbreviation cannot be longer than 5 characters")
 
   const stateRaw = normalizeKey(raw, "state", "estado").toLowerCase() || "active"
   const state = STATES.includes(stateRaw) ? stateRaw : "active"

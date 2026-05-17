@@ -8,6 +8,7 @@ import { Field, FieldLabel, FieldGroup } from "@/components/ui/field"
 import type { Match, IMatchesMutations } from "@/lib/api"
 import { SkeletonRows, ErrorRow, EmptyRow } from "./table-states"
 import { useSectionState, RowActions, DeleteConfirmDialog, EditDialogFooter } from "./shared"
+import { RequiredMark, RequiredNote } from "../forms/shared"
 
 interface MatchesSectionProps {
   matches: Match[]
@@ -144,6 +145,7 @@ export function MatchesSection({ matches, loading, error, searchQuery, onRefresh
             <DialogDescription>Make changes to the record below</DialogDescription>
           </DialogHeader>
           {editErrors._global && <p className="text-sm text-destructive px-1">{editErrors._global}</p>}
+          <RequiredNote />
           {editMatch && (
             <FieldGroup>
               <div className="grid grid-cols-2 gap-4">
@@ -152,12 +154,12 @@ export function MatchesSection({ matches, loading, error, searchQuery, onRefresh
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <Field>
-                  <FieldLabel htmlFor="edit-match-score1">Score Team 1</FieldLabel>
+                  <FieldLabel htmlFor="edit-match-score1">Score Team 1<RequiredMark /></FieldLabel>
                   <Input id="edit-match-score1" type="number" min={0} value={editMatch.score_team1 ?? ""}
                     onChange={(e) => setEditMatch({ ...editMatch, score_team1: parseInt(e.target.value) || 0 })} />
                 </Field>
                 <Field>
-                  <FieldLabel htmlFor="edit-match-score2">Score Team 2</FieldLabel>
+                  <FieldLabel htmlFor="edit-match-score2">Score Team 2<RequiredMark /></FieldLabel>
                   <Input id="edit-match-score2" type="number" min={0} value={editMatch.score_team2 ?? ""}
                     onChange={(e) => setEditMatch({ ...editMatch, score_team2: parseInt(e.target.value) || 0 })} />
                 </Field>

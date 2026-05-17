@@ -13,6 +13,7 @@ import type { Team, Player, ITeamsMutations } from "@/lib/api"
 import { SkeletonRows, ErrorRow, EmptyRow } from "./table-states"
 import { useSectionState, RowActions, DeleteConfirmDialog, EditDialogFooter, stateBadgeVariant } from "./shared"
 import { LogoInput } from "@/components/ui/logo-input"
+import { RequiredMark, RequiredNote } from "../forms/shared"
 
 const STATES = ["active", "inactive", "suspended"]
 
@@ -270,10 +271,11 @@ export function TeamsSection({ teams, players, loading, error, searchQuery, onRe
             <DialogDescription>Make changes to the record below</DialogDescription>
           </DialogHeader>
           {editErrors._global && <p className="text-sm text-destructive px-1">{editErrors._global}</p>}
+          <RequiredNote />
           {editTeam && (
             <FieldGroup>
               <Field>
-                <FieldLabel htmlFor="edit-team-name">Team Name</FieldLabel>
+                <FieldLabel htmlFor="edit-team-name">Team Name<RequiredMark /></FieldLabel>
                 <Input id="edit-team-name" value={editTeam.name}
                   onChange={(e) => setEditTeam({ ...editTeam, name: e.target.value })}
                   className={editErrors.name ? "border-destructive" : ""} />
@@ -281,14 +283,14 @@ export function TeamsSection({ teams, players, loading, error, searchQuery, onRe
               </Field>
               <div className="grid grid-cols-2 gap-4">
                 <Field>
-                  <FieldLabel htmlFor="edit-team-country">Country</FieldLabel>
+                  <FieldLabel htmlFor="edit-team-country">Country<RequiredMark /></FieldLabel>
                   <Input id="edit-team-country" value={editTeam.country}
                     onChange={(e) => setEditTeam({ ...editTeam, country: e.target.value })}
                     className={editErrors.country ? "border-destructive" : ""} />
                   {editErrors.country && <FieldError>{editErrors.country}</FieldError>}
                 </Field>
                 <Field>
-                  <FieldLabel htmlFor="edit-team-city">City</FieldLabel>
+                  <FieldLabel htmlFor="edit-team-city">City<RequiredMark /></FieldLabel>
                   <Input id="edit-team-city" value={editTeam.city}
                     onChange={(e) => setEditTeam({ ...editTeam, city: e.target.value })}
                     className={editErrors.city ? "border-destructive" : ""} />

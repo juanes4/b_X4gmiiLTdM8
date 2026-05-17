@@ -9,6 +9,7 @@ import { Field, FieldLabel, FieldGroup, FieldError } from "@/components/ui/field
 import type { League, ILeaguesMutations } from "@/lib/api"
 import { SkeletonRows, ErrorRow, EmptyRow } from "./table-states"
 import { useSectionState, RowActions, DeleteConfirmDialog, EditDialogFooter, stateBadgeVariant } from "./shared"
+import { RequiredMark, RequiredNote } from "../forms/shared"
 
 const STATES = ["active", "inactive", "suspended"]
 
@@ -127,10 +128,11 @@ export function LeaguesSection({ leagues, loading, error, searchQuery, onRefresh
             <DialogDescription>Make changes to the record below</DialogDescription>
           </DialogHeader>
           {editErrors._global && <p className="text-sm text-destructive px-1">{editErrors._global}</p>}
+          <RequiredNote />
           {editLeague && (
             <FieldGroup>
               <Field>
-                <FieldLabel htmlFor="edit-league-name">League Name</FieldLabel>
+                <FieldLabel htmlFor="edit-league-name">League Name<RequiredMark /></FieldLabel>
                 <Input id="edit-league-name" value={editLeague.name}
                   onChange={(e) => setEditLeague({ ...editLeague, name: e.target.value })}
                   className={editErrors.name ? "border-destructive" : ""} />
