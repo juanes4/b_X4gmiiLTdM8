@@ -1,6 +1,7 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
+import { useRouter } from "next/navigation"
 import { AddRecordPage } from "@/components/add-record-page"
 import { ManagementSection } from "@/components/management-section"
 import { LeagueMatchesPage } from "@/components/league-matches-page"
@@ -12,6 +13,26 @@ type View = "dashboard" | "add-record" | "league-matches" | "bulk-import"
 
 export default function Home() {
   const [currentView, setCurrentView] = useState<View>("dashboard")
+  const [isAuthorized, setIsAuthorized] = useState(false) // Estado para controlar el acceso
+  const router = useRouter()
+  
+useEffect(() => {
+    const session = sessionStorage.getItem("userSession")
+    if (!session) {
+      router.push("/login")
+    } else {
+
+      setIsAuthorized(true)
+    }
+  }, [router])
+
+  if (!isAuthorized) {
+    return (
+      <main className="min-h-screen flex items-center justify-center bg-muted/30">
+        <p className="text-muted-foreground animate-pulse text-sm">Verificando credenciales...</p>
+      </main>
+    )
+  }
 
   if (currentView === "add-record") {
     return (
