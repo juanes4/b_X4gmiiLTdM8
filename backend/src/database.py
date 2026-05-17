@@ -84,6 +84,13 @@ def init_db():
             played_at       TEXT,
             created_at      TEXT DEFAULT (datetime('now'))
         );
+
+        CREATE TABLE IF NOT EXISTS user (
+            name            TEXT NOT NULL,
+            email           TEXT PRIMARY KEY,
+            password        TEXT NOT NULL,
+            created_at      TEXT DEFAULT (datetime('now'))
+        );
     """)
 
     conn.commit()

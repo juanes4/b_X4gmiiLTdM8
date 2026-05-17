@@ -72,7 +72,7 @@ export function PlayersSection({ players, teams, loading, error, searchQuery, on
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Name</TableHead>
+              <TableHead className="px-20">Name</TableHead>
               <TableHead className="hidden sm:table-cell">Position</TableHead>
               <TableHead className="hidden md:table-cell">Age</TableHead>
               <TableHead>#</TableHead>

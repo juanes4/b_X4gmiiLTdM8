@@ -175,11 +175,11 @@ export function TeamsSection({ teams, players, loading, error, searchQuery, onRe
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Name</TableHead>
-              <TableHead className="hidden md:table-cell">Country</TableHead>
-              <TableHead className="hidden sm:table-cell">City</TableHead>
-              <TableHead>State</TableHead>
-              <TableHead className="text-right">Actions</TableHead>
+                <TableHead className="px-20">Name</TableHead>
+                <TableHead className="hidden md:table-cell px-20">Country</TableHead>
+                <TableHead className="hidden sm:table-cell px-20">City</TableHead>
+                <TableHead className="px-20">State</TableHead>
+                <TableHead className="text-right px-20">Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -187,17 +187,17 @@ export function TeamsSection({ teams, players, loading, error, searchQuery, onRe
               : error ? <ErrorRow cols={5} message={error} onRetry={onRefresh} />
               : filtered.length === 0 ? <EmptyRow cols={5} message={searchQuery ? "No teams match your search" : "No teams found"} />
               : filtered.map((team) => (
-                <TableRow key={team.id}>
-                  <TableCell className="font-medium">
-                    {team.name}
-                    <span className="ml-1.5 text-muted-foreground text-xs">({team.abbreviation})</span>
-                  </TableCell>
-                  <TableCell className="hidden md:table-cell">{team.country}</TableCell>
-                  <TableCell className="hidden sm:table-cell">{team.city}</TableCell>
-                  <TableCell>
-                    <Badge variant={stateBadgeVariant(team.state)}>{team.state}</Badge>
-                  </TableCell>
-                  <TableCell className="text-right">
+              <TableRow key={team.id}>
+                    <TableCell className="font-medium px-20">
+                      {team.name}
+                      <span className="ml-10 text-muted-foreground text-xs">({team.abbreviation})</span>
+                    </TableCell>
+                    <TableCell className="hidden md:table-cell px-20">{team.country}</TableCell>
+                    <TableCell className="hidden sm:table-cell px-20">{team.city}</TableCell>
+                    <TableCell className="px-20">
+                      <Badge variant={stateBadgeVariant(team.state)}>{team.state}</Badge>
+                    </TableCell>
+                  <TableCell className="text-right px-2">
                     <RowActions
                       onView={() => setViewTeam(team)}
                       onEdit={() => openEdit(team)}

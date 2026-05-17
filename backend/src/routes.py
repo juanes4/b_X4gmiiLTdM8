@@ -1,6 +1,8 @@
 from flask import Blueprint, request, jsonify
 from .database import get_db
 from .services import compute_standings, generate_groups, register_result, generate_round_robin_schedule
+import sqlite3
+import bcrypt
 
 api = Blueprint("api", __name__)
 
@@ -593,3 +595,95 @@ def delete_match(match_id):
     conn.commit()
     conn.close()
     return jsonify({"deleted": match_id})
+
+#-----------------------------------LoginSesion----------------------#
+@api.post("/login")
+def validar_usuario():
+
+    data = request.get_json()
+    email = data["user"]
+    password = data["password"]
+    sanitized_user = email.strip() if email else ""
+    sanitized_password = password.strip() if password else ""
+
+    conn = get_db()
+    cursor = conn.cursor()
+    try:
+        query = """
+            SELECT name, password, email
+            FROM user 
+            WHERE email = ?
+            LIMIT 1
+        """
+        cursor.execute(query, (sanitized_user,))
+        row = cursor.fetchone()
+    except sqlite3.Error as e:
+        print(f"Error en la base de datos: {e}")
+        return {"success": False, "message": "Error interno"}
+    finally:
+        conn.close()
+
+    if row is not None:
+        hash_en_db = row[1]
+        password_bytes = sanitized_password.encode('utf-8')
+        hash_bytes = hash_en_db.encode('utf-8')
+
+        if bcrypt.checkpw(password_bytes, hash_bytes):
+            return jsonify({
+                "success": True,
+                "user": {"name": row[0], "email": row[2]}
+            }), 200
+        else:
+            return jsonify({"error": "Usuario o contraseña incorrectos"}), 401
+            
+    else:
+        return jsonify({"error": "Usuario o contraseña incorrectos"}), 401
+
+#-----------------IngresarUsuario-----------------------------#
+def registrar_usuario(name, email, password):
+    name = name.strip()
+    email = email.strip()
+    password = password.strip()
+    
+    if not name or not email or not password:
+        return {"success": False, "message": "El usuario y la contraseña no pueden estar vacíos"}
+
+    password_bytes = password.encode('utf-8')
+    salt = bcrypt.gensalt()
+    password_hash = bcrypt.hashpw(password_bytes, salt)
+    
+    # Decodificamos a string para guardarlo en la columna TEXT de SQLite
+    hash_texto = password_hash.decode('utf-8')
+
+    # 3. CONECTAR A LA BASE DE DATOS E INSERTAR
+    conn = sqlite3.connect("championship.db")
+    cursor = conn.cursor()
+
+    try:
+        # SENTENCIA SQL SEGURA: Usamos marcadores de posición '?'
+        query = """
+            INSERT INTO user (name, email, password) 
+            VALUES (?, ?, ?)
+        """
+        
+        # Pasamos los valores dentro de una lista o tupla
+        cursor.execute(query, [name, email, hash_texto])
+    
+        conn.commit()
+        
+        return {"success": True, "message": f"Usuario '{name}' registrado con éxito"}
+
+    except sqlite3.IntegrityError:
+        # Este error salta automáticamente si tu columna 'username' es UNIQUE 
+        # y el nombre de usuario ya existe en la tabla
+        return {"success": False, "message": "El nombre de usuario ya está registrado"}
+        
+    except sqlite3.Error as e:
+        return {"success": False, "message": f"Error de base de datos: {e}"}
+        
+    finally:
+        conn.close()
+
+# --- Ejemplo para crear tu cuenta de Administrador de prueba ---
+resultado = registrar_usuario("Administrador","admin@footpass.com", "FootPass2026")
+print(resultado["message"])
