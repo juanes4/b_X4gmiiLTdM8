@@ -65,17 +65,17 @@ export function AddLeagueForm() {
     const newErrors: FormErrors = {}
 
     if (!formData.name.trim()) {
-      newErrors.name = "League name is required"
+      newErrors.name = "Please enter the league name"
     } else if (formData.name.trim().length < 2) {
-      newErrors.name = "Name must be at least 2 characters"
+      newErrors.name = "The league name must be at least 2 characters long"
     }
 
     if (formData.teams.length < 2) {
-      newErrors.teams = "Select at least 2 teams"
+      newErrors.teams = "You need to add at least 2 teams to create a league"
     }
 
     if (formData.current_round < 0) {
-      newErrors.current_round = "Current round must be 0 or greater"
+      newErrors.current_round = "The current round must be 0 or a positive number"
     }
 
     setErrors(newErrors)

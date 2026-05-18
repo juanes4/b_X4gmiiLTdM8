@@ -2,13 +2,12 @@
 
 import { useState } from "react"
 import { Button } from "@/components/ui/button"
-import { CheckCircle2, Shield, UserPlus, Trophy, Medal, ArrowLeft } from "lucide-react"
+import { CheckCircle2, Shield, UserPlus, Medal, ArrowLeft } from "lucide-react"
 import { TeamForm } from "./forms/team-form"
 import { PlayerForm } from "./forms/player-form"
-import { MatchForm } from "./forms/match-form"
 import { LeagueForm } from "./forms/league-form"
 
-type RecordType = "team" | "player" | "match" | "league"
+type RecordType = "team" | "player" | "league"
 
 interface AddRecordPageProps {
   onBack?: () => void
@@ -17,7 +16,6 @@ interface AddRecordPageProps {
 const NAV_ITEMS: { type: RecordType; label: string; icon: React.ReactNode; description: string }[] = [
   { type: "team", label: "Team", icon: <Shield className="h-5 w-5" />, description: "Add a new team to the system" },
   { type: "player", label: "Player", icon: <UserPlus className="h-5 w-5" />, description: "Add a new player to the roster" },
-  { type: "match", label: "Match", icon: <Trophy className="h-5 w-5" />, description: "Create a match between teams" },
   { type: "league", label: "League", icon: <Medal className="h-5 w-5" />, description: "Create a league with teams and rounds" },
 ]
 
@@ -80,7 +78,6 @@ export function AddRecordPage({ onBack }: AddRecordPageProps) {
         <div className="max-w-2xl mx-auto">
           {activeTab === "team" && <TeamForm onSuccess={showSuccess} />}
           {activeTab === "player" && <PlayerForm onSuccess={showSuccess} />}
-          {activeTab === "match" && <MatchForm onSuccess={showSuccess} />}
           {activeTab === "league" && <LeagueForm onSuccess={showSuccess} />}
         </div>
       </div>

@@ -1,4 +1,5 @@
 import random
+from datetime import datetime, timedelta
 from .database import get_db
 
 
@@ -153,9 +154,78 @@ def generate_groups(league_id: int, num_groups: int):
     return groups
 
 
+# ── Round-robin schedule generation ───────────────────────────────────────────
+
+def _round_dates(start_date: str | None, end_date: str | None, num_rounds: int) -> list:
+    """Distribute num_rounds evenly in [start_date, end_date]. Returns list of ISO strings or Nones."""
+    if not start_date or not end_date or num_rounds <= 0:
+        return [None] * num_rounds
+    try:
+        start = datetime.fromisoformat(start_date)
+        end = datetime.fromisoformat(end_date)
+    except ValueError:
+        return [None] * num_rounds
+    total_days = (end - start).days
+    if total_days <= 0:
+        return [start.strftime("%Y-%m-%dT12:00")] * num_rounds
+    step = total_days / num_rounds
+    return [(start + timedelta(days=i * step)).strftime("%Y-%m-%dT12:00") for i in range(num_rounds)]
+
+
+def generate_round_robin_schedule(league_id: int):
+    """
+    Generate a full round-robin schedule using the rotation algorithm.
+    For N teams: N-1 rounds (N rounds if odd, with one bye per round).
+    Each round has floor(N/2) real matches.
+    Deletes existing matches for the league before inserting new ones.
+    """
+    conn = get_db()
+
+    conn.execute("DELETE FROM matches WHERE league_id = ?", (league_id,))
+
+    league = conn.execute("SELECT * FROM leagues WHERE id = ?", (league_id,)).fetchone()
+
+    team_ids = [r["team_id"] for r in conn.execute(
+        "SELECT team_id FROM league_teams WHERE league_id = ?", (league_id,)
+    ).fetchall()]
+
+    if len(team_ids) < 2:
+        conn.close()
+        raise ValueError("Need at least 2 teams to generate schedule")
+
+    teams = list(team_ids)
+    if len(teams) % 2 == 1:
+        teams.append(None)  # phantom team = bye
+
+    m = len(teams)
+    num_rounds = m - 1
+    rotation = list(range(m))
+
+    dates = _round_dates(league["start_date"], league["end_date"], num_rounds)
+
+    for round_num in range(1, m):
+        round_date = dates[round_num - 1]
+        for i in range(m // 2):
+            home = teams[rotation[i]]
+            away = teams[rotation[m - 1 - i]]
+            if home is not None and away is not None:
+                conn.execute(
+                    "INSERT INTO matches (league_id, team1_id, team2_id, round, scheduled_at) VALUES (?,?,?,?,?)",
+                    (league_id, home, away, round_num, round_date)
+                )
+        # Rotate: keep position 0 fixed, shift the rest right by 1
+        rotation = [rotation[0]] + [rotation[-1]] + rotation[1:-1]
+
+    conn.execute("UPDATE leagues SET current_round = 1 WHERE id = ?", (league_id,))
+    conn.commit()
+    conn.close()
+
+
 # ── Match result registration ──────────────────────────────────────────────────
 
-def register_result(match_id: int, score_team1: int, score_team2: int):
+def register_result(match_id: int, score_team1: int, score_team2: int,
+                    halftime_score_team1=None, halftime_score_team2=None,
+                    venue=None, referee=None, scheduled_at=None):
     conn = get_db()
     match = conn.execute(
         "SELECT * FROM matches WHERE id = ?", (match_id,)
@@ -178,9 +248,17 @@ def register_result(match_id: int, score_team1: int, score_team2: int):
     conn.execute(
         """UPDATE matches
            SET score_team1 = ?, score_team2 = ?, winner_id = ?,
-               played = 1, played_at = datetime('now')
+               played = 1, played_at = datetime('now'),
+               halftime_score_team1 = COALESCE(?, halftime_score_team1),
+               halftime_score_team2 = COALESCE(?, halftime_score_team2),
+               venue = COALESCE(?, venue),
+               referee = COALESCE(?, referee),
+               scheduled_at = COALESCE(?, scheduled_at)
            WHERE id = ?""",
-        (s1, s2, winner_id, match_id)
+        (s1, s2, winner_id,
+         halftime_score_team1, halftime_score_team2,
+         venue, referee, scheduled_at,
+         match_id)
     )
     conn.commit()
     conn.close()

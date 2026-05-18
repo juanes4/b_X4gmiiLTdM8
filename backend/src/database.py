@@ -47,6 +47,8 @@ def init_db():
             name            TEXT NOT NULL UNIQUE,
             state           TEXT NOT NULL DEFAULT 'active',
             current_round   INTEGER DEFAULT 0,
+            start_date      TEXT,
+            end_date        TEXT,
             created_at      TEXT DEFAULT (datetime('now'))
         );
 
@@ -82,6 +84,13 @@ def init_db():
             played_at       TEXT,
             created_at      TEXT DEFAULT (datetime('now'))
         );
+
+        CREATE TABLE IF NOT EXISTS user (
+            name            TEXT NOT NULL,
+            email           TEXT PRIMARY KEY,
+            password        TEXT NOT NULL,
+            created_at      TEXT DEFAULT (datetime('now'))
+        );
     """)
 
     conn.commit()
@@ -91,6 +100,23 @@ def init_db():
     if "winner_id" not in cols:
         cur.execute("ALTER TABLE matches ADD COLUMN winner_id INTEGER REFERENCES teams(id)")
         conn.commit()
+
+    for col, defn in [
+        ("scheduled_at", "TEXT"),
+        ("venue", "TEXT"),
+        ("referee", "TEXT"),
+        ("halftime_score_team1", "INTEGER"),
+        ("halftime_score_team2", "INTEGER"),
+    ]:
+        if col not in cols:
+            cur.execute(f"ALTER TABLE matches ADD COLUMN {col} {defn}")
+
+    league_cols = [r[1] for r in cur.execute("PRAGMA table_info(leagues)").fetchall()]
+    for col, defn in [("start_date", "TEXT"), ("end_date", "TEXT")]:
+        if col not in league_cols:
+            cur.execute(f"ALTER TABLE leagues ADD COLUMN {col} {defn}")
+
+    conn.commit()
 
     # Migrate existing DB: add photo to players if missing
     player_cols = [r[1] for r in cur.execute("PRAGMA table_info(players)").fetchall()]

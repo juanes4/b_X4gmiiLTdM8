@@ -104,7 +104,7 @@ export function AddTeamForm() {
     }
 
     if (formData.players.length < 11) {
-      newErrors.players = `You need to select at least 11 players (${formData.players.length} selected so far)`
+      newErrors.players = `You need to select 11 players (${formData.players.length} selected so far)`
     }
 
     setErrors(newErrors)
