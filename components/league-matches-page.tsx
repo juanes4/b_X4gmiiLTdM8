@@ -1,53 +1,32 @@
 "use client"
 
-import { useState, useEffect, useCallback, useRef } from "react"
+// SRP: este componente tiene una única responsabilidad — renderizar la UI de
+// gestión de partidos y orquestar los hooks especializados.
+// La lógica de estado/datos vive en useLeagueMatchState.
+// La lógica de auto-guardado vive en useAutoSave.
+
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
+  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table"
 import {
-  ArrowLeft,
-  ChevronDown,
-  ChevronUp,
-  Trophy,
-  CheckCircle2,
-  Clock,
-  ArrowRight,
-  Medal,
-  Loader2,
-  MapPin,
-  User,
-  CalendarClock,
-  Save,
-  CalendarDays,
+  ArrowLeft, ChevronDown, ChevronUp, Trophy, CheckCircle2, Clock,
+  ArrowRight, Medal, Loader2, MapPin, User, CalendarClock, Save, CalendarDays,
 } from "lucide-react"
+import type { RoundMatch } from "@/lib/api"
 import { leaguesApi, matchesApi } from "@/lib/api"
-import type { League, LeagueRoundsResponse, Standing, RoundMatch, MatchResultPayload } from "@/lib/api"
+import { useLeagueMatchState, emptyInput } from "@/lib/hooks/useLeagueMatchState"
+import type { MatchInput } from "@/lib/hooks/useLeagueMatchState"
+import { useAutoSave } from "@/lib/hooks/useAutoSave"
 
 interface LeagueMatchesPageProps {
   onBack?: () => void
 }
 
-type MatchInput = {
-  s1: string
-  s2: string
-  ht1: string
-  ht2: string
-  venue: string
-  referee: string
-  scheduled_at: string
-}
-
-// Derived match lifecycle state
 type MatchStatus = "draft" | "scheduled" | "active" | "played"
 
 function deriveStatus(match: RoundMatch, isCurrentRound: boolean): MatchStatus {
@@ -57,190 +36,27 @@ function deriveStatus(match: RoundMatch, isCurrentRound: boolean): MatchStatus {
   return hasMetadata ? "scheduled" : "draft"
 }
 
-const emptyInput = (): MatchInput => ({
-  s1: "", s2: "", ht1: "", ht2: "", venue: "", referee: "", scheduled_at: "",
-})
-
 export function LeagueMatchesPage({ onBack }: LeagueMatchesPageProps) {
-  const [leagues, setLeagues] = useState<League[]>([])
-  const [selectedId, setSelectedId] = useState<string>("")
-  const [data, setData] = useState<LeagueRoundsResponse | null>(null)
-  const [standings, setStandings] = useState<Standing[]>([])
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const [advanceError, setAdvanceError] = useState<string | null>(null)
-  const [advancing, setAdvancing] = useState(false)
-  const [savingId, setSavingId] = useState<string | null>(null)
-  const [inputs, setInputs] = useState<Record<string, MatchInput>>({})
-  const [inputErrors, setInputErrors] = useState<Record<string, string>>({})
-  const [expandedRounds, setExpandedRounds] = useState<Set<number>>(new Set())
-  const [savedIds, setSavedIds] = useState<Set<string>>(new Set())
+  const {
+    leagues, selectedId, setSelectedId, data, standings, loading, error,
+    advanceError, advancing, savingId, inputs, inputErrors, expandedRounds,
+    savedIds, inputsRef, currentRound, totalRounds, isCompleted, canAdvance,
+    pendingCount, toggleRound, setRawInput, handleSaveResult, handleAdvance,
+  } = useLeagueMatchState(leaguesApi, matchesApi)
 
-  // Auto-save state for metadata fields
-  const [autoSavingId, setAutoSavingId] = useState<string | null>(null)
-  const [autoSavedId, setAutoSavedId] = useState<string | null>(null)
-  const autoSaveTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({})
-  // Mirror of inputs readable inside setTimeout closures without stale captures
-  const inputsRef = useRef(inputs)
-  useEffect(() => { inputsRef.current = inputs }, [inputs])
+  const { autoSavingId, autoSavedId, scheduleAutoSave } = useAutoSave(matchesApi)
 
-  useEffect(() => {
-    leaguesApi.getAll().then(setLeagues).catch(() => {})
-  }, [])
-
-  const loadLeague = useCallback(async (id: string) => {
-    setLoading(true)
-    setError(null)
-    setAdvanceError(null)
-    try {
-      const [roundsData, standingsData] = await Promise.all([
-        leaguesApi.getRounds(id),
-        leaguesApi.getStandings(id),
-      ])
-      setData(roundsData)
-      setStandings(standingsData)
-      const cur = roundsData.league.current_round
-      setExpandedRounds(new Set([cur]))
-
-      // Pre-populate inputs for every unplayed match across all rounds
-      const newInputs: Record<string, MatchInput> = {}
-      for (const round of roundsData.rounds) {
-        for (const match of round.matches) {
-          if (!match.played) {
-            newInputs[match.id] = {
-              s1: "", s2: "", ht1: "", ht2: "",
-              scheduled_at: match.scheduled_at ?? "",
-              venue: match.venue ?? "",
-              referee: match.referee ?? "",
-            }
-          }
-        }
-      }
-      setInputs(newInputs)
-      setInputErrors({})
-    } catch {
-      setError("Could not load the league data. Please try again.")
-    } finally {
-      setLoading(false)
-    }
-  }, [])
-
-  useEffect(() => {
-    if (selectedId) loadLeague(selectedId)
-    else { setData(null); setStandings([]) }
-  }, [selectedId, loadLeague])
-
-  const toggleRound = (r: number) =>
-    setExpandedRounds((prev) => {
-      const next = new Set(prev)
-      next.has(r) ? next.delete(r) : next.add(r)
-      return next
-    })
-
-  // Auto-save metadata after 1.2 s of inactivity on venue / referee / scheduled_at
-  const scheduleAutoSave = useCallback((matchId: string) => {
-    if (autoSaveTimers.current[matchId]) clearTimeout(autoSaveTimers.current[matchId])
-    autoSaveTimers.current[matchId] = setTimeout(async () => {
-      const inp = inputsRef.current[matchId]
-      if (!inp) return
-      const meta: { scheduled_at?: string; venue?: string; referee?: string } = {}
-      if (inp.scheduled_at) meta.scheduled_at = inp.scheduled_at
-      if (inp.venue.trim()) meta.venue = inp.venue.trim()
-      if (inp.referee.trim()) meta.referee = inp.referee.trim()
-      setAutoSavingId(matchId)
-      try {
-        await matchesApi.updateMetadata(matchId, meta)
-        setAutoSavedId(matchId)
-        setTimeout(() => setAutoSavedId((prev) => (prev === matchId ? null : prev)), 2500)
-      } catch {
-        // silently ignore — user sees no error so they won't be blocked
-      } finally {
-        setAutoSavingId((prev) => (prev === matchId ? null : prev))
-      }
-    }, 1200)
-  }, [])
-
+  // Glue entre los dos hooks: actualiza el input y dispara auto-guardado si es metadata
   const setInputField = (matchId: string, field: keyof MatchInput, value: string) => {
-    if (
-      (field === "s1" || field === "s2" || field === "ht1" || field === "ht2") &&
-      value !== "" && (isNaN(Number(value)) || Number(value) < 0)
-    ) return
-    setInputs((prev) => ({ ...prev, [matchId]: { ...(prev[matchId] ?? emptyInput()), [field]: value } }))
-    if (inputErrors[matchId]) setInputErrors((prev) => { const n = { ...prev }; delete n[matchId]; return n })
-    // Metadata fields trigger auto-save; score fields do not
+    setRawInput(matchId, field, value)
     if (field === "venue" || field === "referee" || field === "scheduled_at") {
-      scheduleAutoSave(matchId)
+      scheduleAutoSave(matchId, () => inputsRef.current[matchId] ?? emptyInput())
     }
   }
-
-  const handleSaveResult = async (match: RoundMatch) => {
-    const inp = inputs[match.id] ?? emptyInput()
-    if (inp.s1 === "" || inp.s2 === "") return
-
-    const s1 = parseInt(inp.s1)
-    const s2 = parseInt(inp.s2)
-
-    if (inp.ht1 !== "" && inp.ht2 !== "") {
-      const ht1 = parseInt(inp.ht1)
-      const ht2 = parseInt(inp.ht2)
-      if (ht1 > s1 || ht2 > s2) {
-        setInputErrors((prev) => ({
-          ...prev,
-          [match.id]: `HT (${ht1}–${ht2}) cannot exceed final score (${s1}–${s2})`,
-        }))
-        return
-      }
-    }
-
-    setSavingId(match.id)
-    try {
-      const payload: MatchResultPayload = { score_team1: s1, score_team2: s2 }
-      if (inp.ht1 !== "" && inp.ht2 !== "") {
-        payload.halftime_score_team1 = parseInt(inp.ht1)
-        payload.halftime_score_team2 = parseInt(inp.ht2)
-      }
-      if (inp.venue.trim()) payload.venue = inp.venue.trim()
-      if (inp.referee.trim()) payload.referee = inp.referee.trim()
-      if (inp.scheduled_at) payload.scheduled_at = inp.scheduled_at
-      await matchesApi.updateResult(match.id, payload)
-      setSavedIds((prev) => new Set([...prev, match.id]))
-      setTimeout(() => setSavedIds((prev) => { const n = new Set(prev); n.delete(match.id); return n }), 3000)
-      await loadLeague(selectedId)
-    } catch (err) {
-      setInputErrors((prev) => ({
-        ...prev,
-        [match.id]: err instanceof Error ? err.message : "Could not save the result. Please try again.",
-      }))
-    } finally {
-      setSavingId(null)
-    }
-  }
-
-  const handleAdvance = async () => {
-    setAdvancing(true)
-    setAdvanceError(null)
-    try {
-      await leaguesApi.advanceRound(selectedId)
-      await loadLeague(selectedId)
-    } catch (err) {
-      setAdvanceError(err instanceof Error ? err.message : "Could not advance to the next round. Please try again.")
-    } finally {
-      setAdvancing(false)
-    }
-  }
-
-  const currentRound = data?.league.current_round ?? 0
-  const totalRounds = data?.total_rounds ?? 0
-  const isCompleted = data?.league.state === "completed"
-
-  const currentRoundMatches = data?.rounds.find((r) => r.round === currentRound)?.matches ?? []
-  const allCurrentPlayed = currentRoundMatches.length > 0 && currentRoundMatches.every((m) => m.played === 1)
-  const canAdvance = allCurrentPlayed && !isCompleted && currentRound <= totalRounds
-  const pendingCount = currentRoundMatches.filter((m) => m.played === 0).length
 
   return (
     <div className="space-y-6">
-      {/* Page header */}
+      {/* Cabecera */}
       <div className="flex items-center gap-4">
         {onBack && (
           <Button variant="ghost" size="icon" onClick={onBack} className="shrink-0">
@@ -253,7 +69,7 @@ export function LeagueMatchesPage({ onBack }: LeagueMatchesPageProps) {
         </div>
       </div>
 
-      {/* League selector */}
+      {/* Selector de liga */}
       <div className="rounded-2xl border bg-card p-5 flex flex-col sm:flex-row sm:items-center gap-4">
         <div className="flex items-center gap-2 shrink-0">
           <Trophy className="h-5 w-5 text-primary" />
@@ -268,9 +84,7 @@ export function LeagueMatchesPage({ onBack }: LeagueMatchesPageProps) {
               <div className="py-4 text-center text-sm text-muted-foreground">No leagues found</div>
             ) : (
               leagues.map((lg) => (
-                <SelectItem key={lg.id} value={String(lg.id)}>
-                  {lg.name}
-                </SelectItem>
+                <SelectItem key={lg.id} value={String(lg.id)}>{lg.name}</SelectItem>
               ))
             )}
           </SelectContent>
@@ -294,20 +108,15 @@ export function LeagueMatchesPage({ onBack }: LeagueMatchesPageProps) {
 
       {data && !loading && (
         <div className="grid gap-6 lg:grid-cols-[1fr_290px]">
-          {/* Left column: rounds & matches */}
+          {/* Columna izquierda: rondas y partidos */}
           <div className="space-y-4 min-w-0">
-            {/* League identity bar */}
             <div className="flex items-center gap-3 mb-1">
               <h3 className="font-bold text-lg leading-none">{data.league.name}</h3>
-              <Badge
-                variant={isCompleted ? "default" : "secondary"}
-                className="text-xs font-semibold shrink-0"
-              >
+              <Badge variant={isCompleted ? "default" : "secondary"} className="text-xs font-semibold shrink-0">
                 {isCompleted ? "Completed" : `Round ${currentRound} / ${totalRounds}`}
               </Badge>
             </div>
 
-            {/* Rounds accordion */}
             <div className="space-y-3">
               {data.rounds.map(({ round, matches }) => {
                 const isCurrentRound = round === currentRound
@@ -316,7 +125,6 @@ export function LeagueMatchesPage({ onBack }: LeagueMatchesPageProps) {
                 const playedCount = matches.filter((m) => m.played === 1).length
                 const isFullyPlayed = playedCount === matches.length && matches.length > 0
                 const isExpanded = expandedRounds.has(round)
-                // Does this upcoming round have any scheduling info filled in?
                 const hasAnyScheduled = isFutureRound &&
                   matches.some((m) => m.scheduled_at || m.venue || m.referee)
 
@@ -331,7 +139,6 @@ export function LeagueMatchesPage({ onBack }: LeagueMatchesPageProps) {
                         : "border-border"
                     }`}
                   >
-                    {/* Round header — all rounds are clickable, future rounds open for scheduling */}
                     <button
                       type="button"
                       className={`w-full flex items-center justify-between px-5 py-3.5 transition-colors ${
@@ -344,7 +151,6 @@ export function LeagueMatchesPage({ onBack }: LeagueMatchesPageProps) {
                       onClick={() => toggleRound(round)}
                     >
                       <div className="flex items-center gap-3">
-                        {/* State icon */}
                         {isPastRound && isFullyPlayed ? (
                           <span className="h-7 w-7 rounded-full bg-emerald-500/15 flex items-center justify-center shrink-0">
                             <CheckCircle2 className="h-4 w-4 text-emerald-600" />
@@ -358,7 +164,6 @@ export function LeagueMatchesPage({ onBack }: LeagueMatchesPageProps) {
                             <CalendarDays className="h-3.5 w-3.5 text-muted-foreground" />
                           </span>
                         )}
-
                         <div className="text-left">
                           <p className={`font-bold text-sm leading-snug ${
                             isCurrentRound ? "text-primary" :
@@ -384,17 +189,14 @@ export function LeagueMatchesPage({ onBack }: LeagueMatchesPageProps) {
                           </p>
                         </div>
                       </div>
-
                       {isExpanded
                         ? <ChevronUp className="h-4 w-4 text-muted-foreground shrink-0" />
                         : <ChevronDown className="h-4 w-4 text-muted-foreground shrink-0" />
                       }
                     </button>
 
-                    {/* Matches list */}
                     {isExpanded && (
                       <div className="p-4 space-y-3 border-t border-border/40 bg-muted/10">
-                        {/* Scheduling notice for future rounds */}
                         {isFutureRound && (
                           <div className="flex items-start gap-2 px-1 pb-1">
                             <CalendarDays className="h-3.5 w-3.5 text-muted-foreground mt-0.5 shrink-0" />
@@ -422,7 +224,6 @@ export function LeagueMatchesPage({ onBack }: LeagueMatchesPageProps) {
                           />
                         ))}
 
-                        {/* Advance round — below matches, current round only */}
                         {isCurrentRound && !isCompleted && (
                           <div className="pt-3 mt-1 border-t border-border/30 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                             <p className={`text-xs ${canAdvance ? "text-emerald-600 font-semibold" : "text-muted-foreground"}`}>
@@ -436,9 +237,7 @@ export function LeagueMatchesPage({ onBack }: LeagueMatchesPageProps) {
                                 onClick={handleAdvance}
                                 disabled={!canAdvance || advancing}
                                 className={`gap-2 shrink-0 transition-all ${
-                                  canAdvance
-                                    ? "bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm shadow-emerald-600/30"
-                                    : ""
+                                  canAdvance ? "bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm shadow-emerald-600/30" : ""
                                 }`}
                               >
                                 {advancing
@@ -446,9 +245,7 @@ export function LeagueMatchesPage({ onBack }: LeagueMatchesPageProps) {
                                   : <ArrowRight className="h-4 w-4" />}
                                 {currentRound >= totalRounds ? "Finish League" : `Advance to Round ${currentRound + 1}`}
                               </Button>
-                              {advanceError && (
-                                <p className="text-xs text-destructive">{advanceError}</p>
-                              )}
+                              {advanceError && <p className="text-xs text-destructive">{advanceError}</p>}
                             </div>
                           </div>
                         )}
@@ -466,7 +263,7 @@ export function LeagueMatchesPage({ onBack }: LeagueMatchesPageProps) {
             </div>
           </div>
 
-          {/* Right column: standings — sticky */}
+          {/* Columna derecha: standings */}
           <div className="lg:sticky lg:top-4 lg:self-start">
             <Card className="overflow-hidden border-border/70">
               <CardHeader className="pb-3 bg-gradient-to-b from-muted/40 to-transparent border-b border-border/40">
@@ -510,33 +307,26 @@ export function LeagueMatchesPage({ onBack }: LeagueMatchesPageProps) {
                         >
                           <TableCell className="pl-3 py-2">
                             <span className={`text-xs font-bold h-5 w-5 rounded-full inline-flex items-center justify-center ${
-                              s.position === 1
-                                ? "bg-amber-400 text-amber-900"
-                                : s.position === 2
-                                ? "bg-slate-300 text-slate-700 dark:bg-slate-600 dark:text-slate-200"
-                                : s.position === 3
-                                ? "bg-amber-700/60 text-amber-100"
-                                : "text-muted-foreground"
+                              s.position === 1 ? "bg-amber-400 text-amber-900"
+                              : s.position === 2 ? "bg-slate-300 text-slate-700 dark:bg-slate-600 dark:text-slate-200"
+                              : s.position === 3 ? "bg-amber-700/60 text-amber-100"
+                              : "text-muted-foreground"
                             }`}>
                               {s.position}
                             </span>
                           </TableCell>
                           <TableCell className="py-2">
                             <span className="font-bold text-xs">{s.abbreviation}</span>
-                            <span className="block text-xs text-muted-foreground truncate max-w-[7rem] leading-tight">
-                              {s.name}
-                            </span>
+                            <span className="block text-xs text-muted-foreground truncate max-w-[7rem] leading-tight">{s.name}</span>
                           </TableCell>
                           <TableCell className="text-center font-black text-sm py-2">{s.points}</TableCell>
                           <TableCell className="text-center text-xs hidden sm:table-cell py-2">{s.won}</TableCell>
                           <TableCell className="text-center text-xs hidden sm:table-cell py-2">{s.drawn}</TableCell>
                           <TableCell className="text-center text-xs hidden sm:table-cell py-2">{s.lost}</TableCell>
                           <TableCell className={`text-center text-xs hidden md:table-cell font-semibold pr-3 py-2 ${
-                            s.goal_diff > 0
-                              ? "text-emerald-600"
-                              : s.goal_diff < 0
-                              ? "text-destructive"
-                              : "text-muted-foreground"
+                            s.goal_diff > 0 ? "text-emerald-600"
+                            : s.goal_diff < 0 ? "text-destructive"
+                            : "text-muted-foreground"
                           }`}>
                             {s.goal_diff > 0 ? `+${s.goal_diff}` : s.goal_diff}
                           </TableCell>
@@ -585,28 +375,19 @@ function MatchCard({
   const played = match.played === 1
   const canSave = input.s1 !== "" && input.s2 !== ""
   const status = deriveStatus(match, isCurrentRound)
-
   const hasPlayedDetails =
-    match.halftime_score_team1 !== null ||
-    match.venue ||
-    match.referee ||
-    match.scheduled_at
+    match.halftime_score_team1 !== null || match.venue || match.referee || match.scheduled_at
 
   return (
     <div className={`rounded-xl border overflow-hidden transition-all duration-300 ${
-      justSaved
-        ? "border-emerald-400 shadow-sm shadow-emerald-200 dark:shadow-emerald-900"
-        : played
-        ? "border-emerald-200 dark:border-emerald-900 bg-emerald-50/20 dark:bg-emerald-950/10"
-        : "border-border bg-card"
+      justSaved ? "border-emerald-400 shadow-sm shadow-emerald-200 dark:shadow-emerald-900"
+      : played ? "border-emerald-200 dark:border-emerald-900 bg-emerald-50/20 dark:bg-emerald-950/10"
+      : "border-border bg-card"
     }`}>
-      {/* ── Status header ── */}
       <div className={`flex items-center justify-between px-4 py-2 border-b border-border/30 ${
         played ? "bg-emerald-50/50 dark:bg-emerald-950/20" : "bg-muted/20"
       }`}>
         <StatusBadge status={status} />
-
-        {/* Scheduled date pill — shown when available */}
         {(match.scheduled_at || (!played && input.scheduled_at)) && (
           <span className="text-xs text-muted-foreground flex items-center gap-1">
             <CalendarClock className="h-3 w-3" />
@@ -615,15 +396,11 @@ function MatchCard({
         )}
       </div>
 
-      {/* ── Score focal point ── */}
       <div className="px-4 py-5">
         <div className="flex items-center gap-3">
-          {/* Team 1 */}
           <div className="flex-1 min-w-0 text-right">
             <p className="font-bold text-sm sm:text-base leading-snug truncate">{match.team1_name}</p>
           </div>
-
-          {/* Score */}
           <div className="shrink-0 flex items-center gap-2">
             {played ? (
               <>
@@ -633,32 +410,22 @@ function MatchCard({
               </>
             ) : (
               <>
-                <Input
-                  type="number" min={0} placeholder="0"
-                  value={input.s1}
+                <Input type="number" min={0} placeholder="0" value={input.s1}
                   onChange={(e) => onFieldChange("s1", e.target.value)}
                   className="w-16 h-14 text-center text-2xl font-black px-1 tabular-nums disabled:opacity-35"
-                  disabled={!isCurrentRound}
-                />
+                  disabled={!isCurrentRound} />
                 <span className="text-xl font-light text-muted-foreground">–</span>
-                <Input
-                  type="number" min={0} placeholder="0"
-                  value={input.s2}
+                <Input type="number" min={0} placeholder="0" value={input.s2}
                   onChange={(e) => onFieldChange("s2", e.target.value)}
                   className="w-16 h-14 text-center text-2xl font-black px-1 tabular-nums disabled:opacity-35"
-                  disabled={!isCurrentRound}
-                />
+                  disabled={!isCurrentRound} />
               </>
             )}
           </div>
-
-          {/* Team 2 */}
           <div className="flex-1 min-w-0 text-left">
             <p className="font-bold text-sm sm:text-base leading-snug truncate">{match.team2_name}</p>
           </div>
         </div>
-
-        {/* Score-locked notice for future rounds */}
         {isFutureRound && (
           <p className="text-center text-xs text-muted-foreground mt-3">
             Score entry opens when this round becomes active
@@ -666,7 +433,6 @@ function MatchCard({
         )}
       </div>
 
-      {/* ── Read-only detail strip for played matches ── */}
       {played && hasPlayedDetails && (
         <div className="px-4 pb-3 pt-0 border-t border-border/20 bg-muted/10">
           <div className="flex flex-wrap items-center gap-x-4 gap-y-1 pt-2.5 text-xs text-muted-foreground">
@@ -676,93 +442,61 @@ function MatchCard({
               </span>
             )}
             {match.venue && (
-              <span className="flex items-center gap-1">
-                <MapPin className="h-3 w-3 shrink-0" />{match.venue}
-              </span>
+              <span className="flex items-center gap-1"><MapPin className="h-3 w-3 shrink-0" />{match.venue}</span>
             )}
             {match.referee && (
-              <span className="flex items-center gap-1">
-                <User className="h-3 w-3 shrink-0" />{match.referee}
-              </span>
+              <span className="flex items-center gap-1"><User className="h-3 w-3 shrink-0" />{match.referee}</span>
             )}
           </div>
         </div>
       )}
 
-      {/* ── Editable section for all unplayed matches (current + future) ── */}
       {!played && (
         <div className="border-t border-border/30 bg-muted/10">
           <div className="px-4 pt-4 pb-3 space-y-4">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-5 gap-y-3">
-              {/* Half-time score — current round only, score doesn't affect standings yet */}
               {isCurrentRound && (
                 <div className="sm:col-span-2">
                   <p className="text-xs font-medium text-muted-foreground mb-1.5 flex items-center gap-1.5">
-                    <Trophy className="h-3 w-3" />
-                    Half-Time Score
+                    <Trophy className="h-3 w-3" />Half-Time Score
                   </p>
                   <div className="flex items-center gap-2">
-                    <Input
-                      type="number" min={0} placeholder="0"
-                      value={input.ht1}
+                    <Input type="number" min={0} placeholder="0" value={input.ht1}
                       onChange={(e) => onFieldChange("ht1", e.target.value)}
-                      className="w-16 h-9 text-center text-base font-bold px-1 tabular-nums"
-                    />
+                      className="w-16 h-9 text-center text-base font-bold px-1 tabular-nums" />
                     <span className="text-muted-foreground text-sm font-light select-none">–</span>
-                    <Input
-                      type="number" min={0} placeholder="0"
-                      value={input.ht2}
+                    <Input type="number" min={0} placeholder="0" value={input.ht2}
                       onChange={(e) => onFieldChange("ht2", e.target.value)}
-                      className="w-16 h-9 text-center text-base font-bold px-1 tabular-nums"
-                    />
+                      className="w-16 h-9 text-center text-base font-bold px-1 tabular-nums" />
                   </div>
                 </div>
               )}
-
-              {/* Venue */}
               <div>
                 <p className="text-xs font-medium text-muted-foreground mb-1.5 flex items-center gap-1.5">
-                  <MapPin className="h-3 w-3" />
-                  Venue
+                  <MapPin className="h-3 w-3" />Venue
                 </p>
-                <Input
-                  placeholder="e.g. Camp Nou"
-                  value={input.venue}
+                <Input placeholder="e.g. Camp Nou" value={input.venue}
                   onChange={(e) => onFieldChange("venue", e.target.value)}
-                  className="h-9 text-sm w-full"
-                />
+                  className="h-9 text-sm w-full" />
               </div>
-
-              {/* Referee */}
               <div>
                 <p className="text-xs font-medium text-muted-foreground mb-1.5 flex items-center gap-1.5">
-                  <User className="h-3 w-3" />
-                  Referee
+                  <User className="h-3 w-3" />Referee
                 </p>
-                <Input
-                  placeholder="e.g. M. Oliver"
-                  value={input.referee}
+                <Input placeholder="e.g. M. Oliver" value={input.referee}
                   onChange={(e) => onFieldChange("referee", e.target.value)}
-                  className="h-9 text-sm w-full"
-                />
+                  className="h-9 text-sm w-full" />
               </div>
-
-              {/* Date & Time */}
               <div className="sm:col-span-2">
                 <p className="text-xs font-medium text-muted-foreground mb-1.5 flex items-center gap-1.5">
-                  <CalendarClock className="h-3 w-3" />
-                  Date &amp; Time
+                  <CalendarClock className="h-3 w-3" />Date &amp; Time
                 </p>
-                <Input
-                  type="datetime-local"
-                  value={input.scheduled_at}
+                <Input type="datetime-local" value={input.scheduled_at}
                   onChange={(e) => onFieldChange("scheduled_at", e.target.value)}
-                  className="h-9 text-sm w-full sm:max-w-xs"
-                />
+                  className="h-9 text-sm w-full sm:max-w-xs" />
               </div>
             </div>
 
-            {/* Auto-save feedback */}
             <div className="flex items-center justify-end h-4">
               {isAutoSaving && (
                 <span className="text-xs text-muted-foreground flex items-center gap-1">
@@ -776,17 +510,12 @@ function MatchCard({
               )}
             </div>
 
-            {inputError && (
-              <p className="text-xs text-destructive">{inputError}</p>
-            )}
+            {inputError && <p className="text-xs text-destructive">{inputError}</p>}
           </div>
 
-          {/* Save Result footer — current round only */}
           {isCurrentRound && (
             <div className="px-4 py-3 border-t border-border/20 flex items-center justify-between gap-4 bg-card/50">
-              <span className={`text-xs transition-all duration-300 ${
-                justSaved ? "text-emerald-600 font-semibold" : "text-muted-foreground"
-              }`}>
+              <span className={`text-xs transition-all duration-300 ${justSaved ? "text-emerald-600 font-semibold" : "text-muted-foreground"}`}>
                 {justSaved ? (
                   <span className="flex items-center gap-1">
                     <CheckCircle2 className="h-3.5 w-3.5" /> Result saved!
@@ -795,15 +524,8 @@ function MatchCard({
                   !canSave ? "Enter both scores to save" : "Ready to save"
                 )}
               </span>
-              <Button
-                size="sm"
-                onClick={onSaveResult}
-                disabled={!canSave || isSaving}
-                className="gap-2 h-9 px-4 shrink-0"
-              >
-                {isSaving
-                  ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                  : <Save className="h-3.5 w-3.5" />}
+              <Button size="sm" onClick={onSaveResult} disabled={!canSave || isSaving} className="gap-2 h-9 px-4 shrink-0">
+                {isSaving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
                 Save Result
               </Button>
             </div>
@@ -815,36 +537,26 @@ function MatchCard({
 }
 
 // ── Status badge ──────────────────────────────────────────────────────────────
+// OCP: agregar un nuevo estado solo requiere añadir una entrada al mapa,
+//      sin modificar la función StatusBadge.
+
+const STATUS_CONFIG: Record<MatchStatus, {
+  label: string
+  className: string
+  renderIcon: () => React.ReactNode
+}> = {
+  played:    { label: "Played",    className: "font-semibold text-emerald-700 dark:text-emerald-400", renderIcon: () => <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" /> },
+  active:    { label: "Active",    className: "font-semibold text-primary",                           renderIcon: () => <span className="h-2 w-2 rounded-full bg-primary animate-pulse" /> },
+  scheduled: { label: "Scheduled", className: "font-medium text-sky-600 dark:text-sky-400",           renderIcon: () => <CalendarClock className="h-3.5 w-3.5" /> },
+  draft:     { label: "Upcoming",  className: "font-medium text-muted-foreground",                    renderIcon: () => <Clock className="h-3.5 w-3.5" /> },
+}
 
 function StatusBadge({ status }: { status: MatchStatus }) {
-  switch (status) {
-    case "played":
-      return (
-        <span className="flex items-center gap-1.5 text-xs font-semibold text-emerald-700 dark:text-emerald-400 uppercase tracking-wide">
-          <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />
-          Played
-        </span>
-      )
-    case "active":
-      return (
-        <span className="flex items-center gap-1.5 text-xs font-semibold text-primary uppercase tracking-wide">
-          <span className="h-2 w-2 rounded-full bg-primary animate-pulse" />
-          Active
-        </span>
-      )
-    case "scheduled":
-      return (
-        <span className="flex items-center gap-1.5 text-xs font-medium text-sky-600 dark:text-sky-400 uppercase tracking-wide">
-          <CalendarClock className="h-3.5 w-3.5" />
-          Scheduled
-        </span>
-      )
-    case "draft":
-      return (
-        <span className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground uppercase tracking-wide">
-          <Clock className="h-3.5 w-3.5" />
-          Upcoming
-        </span>
-      )
-  }
+  const { label, className, renderIcon } = STATUS_CONFIG[status]
+  return (
+    <span className={`flex items-center gap-1.5 text-xs uppercase tracking-wide ${className}`}>
+      {renderIcon()}
+      {label}
+    </span>
+  )
 }

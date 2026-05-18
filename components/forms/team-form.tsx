@@ -1,5 +1,9 @@
 "use client"
 
+// SRP: este componente tiene una única responsabilidad — renderizar el formulario
+// de creación de equipo y gestionar su estado local.
+// La validación vive en teamValidator; la lógica de API en teamsApi/playersApi.
+
 import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -11,6 +15,7 @@ import { teamsApi, playersApi } from "@/lib/api"
 import type { Player } from "@/lib/api"
 import { FormHeader, RequiredMark, RequiredNote, SubmitButton } from "./shared"
 import { LogoInput } from "@/components/ui/logo-input"
+import { validateTeamForm } from "@/lib/validation/teamValidator"
 
 const STATES = ["active", "inactive", "suspended"]
 const MIN_PLAYERS = 11
@@ -48,30 +53,10 @@ export function TeamForm({ onSuccess }: TeamFormProps) {
       .finally(() => setLoadingPlayers(false))
   }, [])
 
-  const isValidLogoValue = (s: string): boolean => {
-    if (!s) return true
-    if (s.startsWith("/uploads/")) return true
-    try { new URL(s); return true } catch { return false }
-  }
-
-  const validateForm = (): boolean => {
-    const e: Record<string, string> = {}
-    if (!formData.name.trim()) e.name = "Please enter the team name"
-    else if (formData.name.trim().length < 2) e.name = "The team name must be at least 2 characters long"
-    if (!formData.country.trim()) e.country = "Please enter the country"
-    if (!formData.city.trim()) e.city = "Please enter the city"
-    if (!formData.abbreviation.trim()) e.abbreviation = "Please enter an abbreviation (e.g. FCB)"
-    else if (formData.abbreviation.length > 5) e.abbreviation = "The abbreviation cannot be longer than 5 characters"
-    if (formData.logo && !isValidLogoValue(formData.logo)) e.logo = "The logo link doesn't look like a valid web address"
-    if (!formData.state) e.state = "Please select a status for the team"
-    if (formData.players.length < MIN_PLAYERS) e.players = `You need to select ${MIN_PLAYERS} players (${formData.players.length} selected so far)`
-    setErrors(e)
-    return Object.keys(e).length === 0
-  }
-
   const handleSubmit = async (ev: React.FormEvent) => {
     ev.preventDefault()
-    if (!validateForm()) return
+    const e = validateTeamForm(formData)
+    if (Object.keys(e).length > 0) { setErrors(e); return }
     setIsSubmitting(true)
     try {
       await teamsApi.create({

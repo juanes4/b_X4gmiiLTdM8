@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Field, FieldLabel, FieldGroup } from "@/components/ui/field"
 import type { Match, IMatchesMutations } from "@/lib/api"
+import { validateMatchEdit } from "@/lib/validation/matchValidator"
 import { SkeletonRows, ErrorRow, EmptyRow } from "./table-states"
 import { useSectionState, RowActions, DeleteConfirmDialog, EditDialogFooter } from "./shared"
 import { RequiredMark, RequiredNote } from "../forms/shared"
@@ -37,14 +38,15 @@ export function MatchesSection({ matches, loading, error, searchQuery, onRefresh
 
   const handleSave = async () => {
     if (!editMatch) return
-    const errors: Record<string, string> = {}
-    if (editMatch.score_team1 === null) errors.score_team1 = "Score is required"
-    if (editMatch.score_team2 === null) errors.score_team2 = "Score is required"
+    const errors = validateMatchEdit(editMatch)
     if (Object.keys(errors).length > 0) { setEditErrors(errors); return }
 
     setIsSaving(true)
     try {
-      await api.updateResult(editMatch.id, editMatch.score_team1!, editMatch.score_team2!)
+      await api.updateResult(editMatch.id, {
+        score_team1: editMatch.score_team1!,
+        score_team2: editMatch.score_team2!,
+      })
       onRefresh()
       setEditMatch(null)
     } catch (err) {

@@ -1,141 +1,24 @@
 "use client"
 
+// DIP: este componente depende de abstracciones (ImportStrategy, parseFile),
+//      no de implementaciones concretas de la API.
+// SRP: responsabilidad única — orquestar la UI del flujo de importación.
+
 import { useState, useCallback, useRef } from "react"
-import Papa from "papaparse"
 import {
   ArrowLeft, Upload, Download, CheckCircle2, XCircle, AlertCircle,
-  Users, Shield, Loader2, FileSpreadsheet, Info,
+  Loader2, FileSpreadsheet, Info,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { playersApi, teamsApi } from "@/lib/api"
+import { parseFile } from "@/lib/import/parsers"
+import { IMPORT_STRATEGIES } from "@/lib/import/strategies"
+import type { ImportType, ParsedRow, RowStatus } from "@/lib/import/types"
 import { cn } from "@/lib/utils"
 
-// ── Types ──────────────────────────────────────────────────────────────────────
+// ── Helpers locales (UI puro) ──────────────────────────────────────────────────
 
-type ImportType = "players" | "teams"
-type RowStatus = "valid" | "invalid" | "pending" | "success" | "error"
-
-interface BaseRow {
-  errors: string[]
-  status: RowStatus
-  apiError?: string
-}
-
-interface PlayerRow extends BaseRow {
-  type: "player"
-  name: string
-  age: number
-  position: string
-  number: number
-}
-
-interface TeamRow extends BaseRow {
-  type: "team"
-  name: string
-  country: string
-  city: string
-  abbreviation: string
-  state: string
-}
-
-type ParsedRow = PlayerRow | TeamRow
-
-// ── Constants ──────────────────────────────────────────────────────────────────
-
-const POSITIONS = ["Goalkeeper", "Defender", "Midfielder", "Forward"]
-const STATES = ["active", "inactive", "suspended"]
-
-const PLAYER_TEMPLATE = `name,age,position,number
-John Doe,25,Goalkeeper,1
-Jane Smith,22,Midfielder,10
-Carlos López,28,Defender,4
-María García,20,Forward,9`
-
-const TEAM_TEMPLATE = `name,country,city,abbreviation,state
-Real Medellín,Colombia,Medellín,RMED,active
-Nacional FC,Colombia,Bogotá,NAL,active
-Sporting Club,Argentina,Buenos Aires,SCB,active`
-
-// ── Validation ─────────────────────────────────────────────────────────────────
-
-function normalizeKey(raw: Record<string, unknown>, ...keys: string[]): string {
-  for (const k of keys) {
-    const val = raw[k]
-    if (val !== undefined && val !== null && String(val).trim() !== "") {
-      return String(val).trim()
-    }
-  }
-  return ""
-}
-
-function validatePlayer(raw: Record<string, unknown>): PlayerRow {
-  const errors: string[] = []
-
-  const name = normalizeKey(raw, "name", "nombre")
-  if (!name) errors.push("Name is required")
-
-  const ageStr = normalizeKey(raw, "age", "edad")
-  const age = parseInt(ageStr, 10)
-  if (!ageStr || isNaN(age)) errors.push("Age must be a valid number")
-  else if (age < 15 || age > 50) errors.push("Age must be a number between 15 and 50")
-
-  const posRaw = normalizeKey(raw, "position", "posicion", "pos")
-  const position = POSITIONS.find(p => p.toLowerCase() === posRaw.toLowerCase()) ?? posRaw
-  if (!posRaw) errors.push("Position is required")
-  else if (!POSITIONS.includes(position)) errors.push(`Position must be one of: ${POSITIONS.join(", ")}`)
-
-  const numStr = normalizeKey(raw, "number", "jersey", "jersey_number", "numero")
-  const number = parseInt(numStr, 10)
-  if (!numStr || isNaN(number)) errors.push("Jersey number must be a valid number")
-  else if (number < 1 || number > 99) errors.push("Jersey number must be between 1 and 99")
-
-  return {
-    type: "player",
-    name,
-    age: isNaN(age) ? 0 : age,
-    position,
-    number: isNaN(number) ? 0 : number,
-    errors,
-    status: errors.length === 0 ? "valid" : "invalid",
-  }
-}
-
-function validateTeam(raw: Record<string, unknown>): TeamRow {
-  const errors: string[] = []
-
-  const name = normalizeKey(raw, "name", "nombre")
-  if (!name) errors.push("Name is required")
-
-  const country = normalizeKey(raw, "country", "pais", "país")
-  if (!country) errors.push("Country is required")
-
-  const city = normalizeKey(raw, "city", "ciudad")
-  if (!city) errors.push("City is required")
-
-  const abbreviation = normalizeKey(raw, "abbreviation", "abbr", "abreviacion").toUpperCase()
-  if (!abbreviation) errors.push("Please enter an abbreviation (e.g. FCB)")
-  else if (abbreviation.length > 5) errors.push("The abbreviation cannot be longer than 5 characters")
-
-  const stateRaw = normalizeKey(raw, "state", "estado").toLowerCase() || "active"
-  const state = STATES.includes(stateRaw) ? stateRaw : "active"
-
-  return {
-    type: "team",
-    name,
-    country,
-    city,
-    abbreviation,
-    state,
-    errors,
-    status: errors.length === 0 ? "valid" : "invalid",
-  }
-}
-
-// ── Helpers ────────────────────────────────────────────────────────────────────
-
-function downloadTemplate(type: ImportType) {
-  const content = type === "players" ? PLAYER_TEMPLATE : TEAM_TEMPLATE
+function downloadTemplate(type: ImportType, content: string) {
   const blob = new Blob(["﻿" + content], { type: "text/csv;charset=utf-8;" })
   const url = URL.createObjectURL(blob)
   const a = document.createElement("a")
@@ -145,21 +28,19 @@ function downloadTemplate(type: ImportType) {
   URL.revokeObjectURL(url)
 }
 
-// ── Sub-components ─────────────────────────────────────────────────────────────
-
 function StatusBadge({ status }: { status: RowStatus }) {
   const map: Record<RowStatus, { label: string; className: string }> = {
-    valid:   { label: "Valid",     className: "bg-emerald-100 text-emerald-700 border-emerald-200" },
-    invalid: { label: "Invalid",   className: "bg-red-100 text-red-700 border-red-200" },
-    pending: { label: "Pending",   className: "bg-yellow-100 text-yellow-700 border-yellow-200" },
-    success: { label: "Imported",  className: "bg-emerald-100 text-emerald-700 border-emerald-200" },
-    error:   { label: "Failed",    className: "bg-red-100 text-red-700 border-red-200" },
+    valid:   { label: "Valid",    className: "bg-emerald-100 text-emerald-700 border-emerald-200" },
+    invalid: { label: "Invalid",  className: "bg-red-100 text-red-700 border-red-200" },
+    pending: { label: "Pending",  className: "bg-yellow-100 text-yellow-700 border-yellow-200" },
+    success: { label: "Imported", className: "bg-emerald-100 text-emerald-700 border-emerald-200" },
+    error:   { label: "Failed",   className: "bg-red-100 text-red-700 border-red-200" },
   }
   const { label, className } = map[status]
   return <Badge className={className}>{label}</Badge>
 }
 
-// ── Main component ─────────────────────────────────────────────────────────────
+// ── Componente principal ───────────────────────────────────────────────────────
 
 interface BulkImportPageProps {
   onBack?: () => void
@@ -176,6 +57,9 @@ export function BulkImportPage({ onBack }: BulkImportPageProps) {
   const [isDone, setIsDone] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
+  // La estrategia activa encapsula toda la lógica específica del tipo (OCP + DIP)
+  const strategy = IMPORT_STRATEGIES[importType]
+
   const resetFileState = () => {
     setRows([])
     setFileName(null)
@@ -189,75 +73,29 @@ export function BulkImportPage({ onBack }: BulkImportPageProps) {
     resetFileState()
   }
 
-  const applyRows = useCallback(
-    (data: Record<string, unknown>[], fname: string) => {
-      setFileName(fname)
+  // parseFile (SRP externo) convierte el File en filas crudas.
+  // strategy.validate (SRP externo) convierte cada fila cruda en un ParsedRow tipado.
+  const handleFile = useCallback(
+    async (file: File) => {
+      const { rows: raw, error } = await parseFile(file)
+      if (error) {
+        setParseError(error)
+        setRows([])
+        setFileName(null)
+        return
+      }
+      setFileName(file.name)
       setParseError(null)
       setIsDone(false)
       setImportedCount(0)
-
-      if (data.length === 0) {
+      if (raw.length === 0) {
         setParseError("The file appears to be empty or has no data rows.")
         setRows([])
         return
       }
-
-      const parsed =
-        importType === "players"
-          ? data.map(validatePlayer)
-          : data.map(validateTeam)
-
-      setRows(parsed)
+      setRows(raw.map(strategy.validate))
     },
-    [importType]
-  )
-
-  const handleFile = useCallback(
-    async (file: File) => {
-      const name = file.name.toLowerCase()
-
-      if (name.endsWith(".csv") || file.type === "text/csv") {
-        Papa.parse(file, {
-          header: true,
-          skipEmptyLines: true,
-          transformHeader: (h) => h.trim().toLowerCase().replace(/\s+/g, "_"),
-          complete: (result) => {
-            if (result.errors.length > 0 && result.data.length === 0) {
-              setParseError("Could not parse the CSV file. Please check the format.")
-              return
-            }
-            applyRows(result.data as Record<string, unknown>[], file.name)
-          },
-          error: () => setParseError("Failed to read the CSV file."),
-        })
-      } else if (name.endsWith(".xlsx") || name.endsWith(".xls")) {
-        try {
-          const XLSX = await import("xlsx")
-          const buffer = await file.arrayBuffer()
-          const workbook = XLSX.read(buffer, { type: "array" })
-          const sheet = workbook.Sheets[workbook.SheetNames[0]]
-          const raw = XLSX.utils.sheet_to_json(sheet, { defval: "" }) as Record<string, unknown>[]
-          const normalized = raw.map((row) =>
-            Object.fromEntries(
-              Object.entries(row).map(([k, v]) => [
-                k.trim().toLowerCase().replace(/\s+/g, "_"),
-                v,
-              ])
-            )
-          )
-          applyRows(normalized, file.name)
-        } catch {
-          setParseError(
-            "Failed to read the Excel file. Make sure it is a valid .xlsx or .xls file."
-          )
-        }
-      } else {
-        setParseError(
-          "Unsupported format. Please upload a CSV (.csv) or Excel (.xlsx, .xls) file."
-        )
-      }
-    },
-    [applyRows]
+    [strategy]
   )
 
   const handleDrop = useCallback(
@@ -279,6 +117,7 @@ export function BulkImportPage({ onBack }: BulkImportPageProps) {
     [handleFile]
   )
 
+  // strategy.save (DIP) persiste cada fila — el componente no sabe qué API se usa.
   const handleImport = async () => {
     const toImport = rows.filter((r) => r.status === "valid")
     if (toImport.length === 0) return
@@ -286,35 +125,15 @@ export function BulkImportPage({ onBack }: BulkImportPageProps) {
     setIsImporting(true)
     setIsDone(false)
     setImportedCount(0)
-
     setRows((prev) =>
       prev.map((r) => (r.status === "valid" ? { ...r, status: "pending" as RowStatus } : r))
     )
 
     let count = 0
-
     for (let i = 0; i < rows.length; i++) {
       if (rows[i].status !== "valid") continue
-      const row = rows[i]
-
       try {
-        if (row.type === "player") {
-          await playersApi.create({
-            name: row.name,
-            age: row.age,
-            position: row.position,
-            number: row.number,
-            team_id: null,
-          })
-        } else {
-          await teamsApi.create({
-            name: row.name,
-            country: row.country,
-            city: row.city,
-            abbreviation: row.abbreviation,
-            state: row.state,
-          })
-        }
+        await strategy.save(rows[i])
         count++
         setImportedCount(count)
         setRows((prev) => {
@@ -336,11 +155,10 @@ export function BulkImportPage({ onBack }: BulkImportPageProps) {
     setIsDone(true)
   }
 
-  // Derived counts
-  const validCount   = rows.filter((r) => r.status === "valid").length
-  const invalidCount = rows.filter((r) => r.status === "invalid").length
-  const successCount = rows.filter((r) => r.status === "success").length
-  const failCount    = rows.filter((r) => r.status === "error").length
+  const validCount    = rows.filter((r) => r.status === "valid").length
+  const invalidCount  = rows.filter((r) => r.status === "invalid").length
+  const successCount  = rows.filter((r) => r.status === "success").length
+  const failCount     = rows.filter((r) => r.status === "error").length
   const toImportCount = validCount + rows.filter((r) => r.status === "pending").length
 
   return (
@@ -360,64 +178,56 @@ export function BulkImportPage({ onBack }: BulkImportPageProps) {
         </div>
       </div>
 
-      {/* ── Type selector ── */}
+      {/* ── Selector de tipo — OCP: iterar el mapa, no bifurcar ── */}
       <div className="flex gap-3 flex-wrap">
-        {(["players", "teams"] as ImportType[]).map((type) => (
-          <button
-            key={type}
-            onClick={() => handleTypeChange(type)}
-            disabled={isImporting}
-            className={cn(
-              "flex items-center gap-3 px-5 py-3 rounded-xl border-2 transition-all text-left",
-              importType === type
-                ? "border-primary bg-primary/5 text-primary"
-                : "border-border text-muted-foreground hover:border-primary/40"
-            )}
-          >
-            {type === "players" ? (
-              <Users className="h-5 w-5 shrink-0" />
-            ) : (
-              <Shield className="h-5 w-5 shrink-0" />
-            )}
-            <div>
-              <p className="font-medium text-sm capitalize">{type}</p>
-              <p className="text-xs opacity-70">
-                {type === "players" ? "Import player roster" : "Import team list"}
-              </p>
-            </div>
-          </button>
-        ))}
+        {(Object.keys(IMPORT_STRATEGIES) as ImportType[]).map((type) => {
+          const { Icon, label, description } = IMPORT_STRATEGIES[type]
+          return (
+            <button
+              key={type}
+              onClick={() => handleTypeChange(type)}
+              disabled={isImporting}
+              className={cn(
+                "flex items-center gap-3 px-5 py-3 rounded-xl border-2 transition-all text-left",
+                importType === type
+                  ? "border-primary bg-primary/5 text-primary"
+                  : "border-border text-muted-foreground hover:border-primary/40"
+              )}
+            >
+              <Icon className="h-5 w-5 shrink-0" />
+              <div>
+                <p className="font-medium text-sm capitalize">{label}</p>
+                <p className="text-xs opacity-70">{description}</p>
+              </div>
+            </button>
+          )
+        })}
       </div>
 
-      {/* ── Format info + template ── */}
+      {/* ── Panel de información — datos desde la estrategia, sin bifurcaciones ── */}
       <div className="bg-card rounded-xl border p-4 flex items-start gap-4">
         <Info className="h-5 w-5 text-primary mt-0.5 shrink-0" />
         <div className="flex-1 min-w-0">
           <p className="font-medium text-sm text-foreground">
-            Required columns for {importType}
+            Required columns for {strategy.label.toLowerCase()}
           </p>
-          {importType === "players" ? (
-            <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
-              {["name", "age", "position", "number"].map((col) => (
-                <span key={col} className="font-mono bg-muted px-1 rounded mr-1">{col}</span>
-              ))}
-              &mdash; Position: {POSITIONS.join(", ")} &middot; Age: 15–50 &middot; Jersey: 1–99
-            </p>
-          ) : (
-            <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
-              {["name", "country", "city", "abbreviation"].map((col) => (
-                <span key={col} className="font-mono bg-muted px-1 rounded mr-1">{col}</span>
-              ))}
-              <span className="font-mono bg-muted px-1 rounded mr-1">state</span>
-              <span className="opacity-70">(optional)</span>
-              &mdash; Abbreviation: max 5 chars &middot; State: active, inactive, suspended
-            </p>
-          )}
+          <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
+            {strategy.requiredColumns.map((col) => (
+              <span key={col} className="font-mono bg-muted px-1 rounded mr-1">{col}</span>
+            ))}
+            {strategy.optionalColumns?.map((col) => (
+              <span key={col}>
+                <span className="font-mono bg-muted px-1 rounded mr-1">{col}</span>
+                <span className="opacity-70 mr-1">(optional)</span>
+              </span>
+            ))}
+            &mdash; {strategy.note}
+          </p>
         </div>
         <Button
           variant="outline"
           size="sm"
-          onClick={() => downloadTemplate(importType)}
+          onClick={() => downloadTemplate(importType, strategy.templateContent)}
           className="shrink-0"
         >
           <Download className="h-4 w-4 mr-2" />
@@ -425,7 +235,7 @@ export function BulkImportPage({ onBack }: BulkImportPageProps) {
         </Button>
       </div>
 
-      {/* ── Drop zone ── */}
+      {/* ── Zona de drop ── */}
       <div
         onDragOver={(e) => { e.preventDefault(); setIsDragging(true) }}
         onDragLeave={() => setIsDragging(false)}
@@ -459,18 +269,14 @@ export function BulkImportPage({ onBack }: BulkImportPageProps) {
             </div>
           ) : (
             <>
-              <p className="font-medium text-foreground">
-                Drop your file here or click to browse
-              </p>
-              <p className="text-sm text-muted-foreground">
-                Supports CSV (.csv) and Excel (.xlsx, .xls)
-              </p>
+              <p className="font-medium text-foreground">Drop your file here or click to browse</p>
+              <p className="text-sm text-muted-foreground">Supports CSV (.csv) and Excel (.xlsx, .xls)</p>
             </>
           )}
         </div>
       </div>
 
-      {/* ── Parse error ── */}
+      {/* ── Error de parseo ── */}
       {parseError && (
         <div className="flex items-center gap-3 p-4 rounded-xl bg-red-50 border border-red-200 text-red-700">
           <XCircle className="h-5 w-5 shrink-0" />
@@ -478,10 +284,9 @@ export function BulkImportPage({ onBack }: BulkImportPageProps) {
         </div>
       )}
 
-      {/* ── Preview table ── */}
+      {/* ── Tabla de previsualización — columnas y celdas desde la estrategia ── */}
       {rows.length > 0 && (
         <div className="bg-card rounded-xl border">
-          {/* Table toolbar */}
           <div className="flex items-center justify-between px-5 py-4 border-b bg-muted/30 flex-wrap gap-3">
             <div className="flex items-center gap-2 flex-wrap">
               <span className="font-semibold text-sm text-foreground">
@@ -524,15 +329,11 @@ export function BulkImportPage({ onBack }: BulkImportPageProps) {
             </div>
           </div>
 
-          {/* Table body */}
           <div className="overflow-x-auto max-h-[420px] overflow-y-auto">
             <table className="w-full text-sm border-collapse">
               <thead>
                 <tr>
-                  {(importType === "players"
-                    ? ["#", "Name", "Age", "Position", "Jersey #", "Status"]
-                    : ["#", "Name", "Country", "City", "Abbr.", "State", "Status"]
-                  ).map((col) => (
+                  {["#", ...strategy.columns, "Status"].map((col) => (
                     <th
                       key={col}
                       className="sticky top-0 z-10 text-left px-4 py-2.5 font-medium text-muted-foreground bg-card border-b border-border whitespace-nowrap"
@@ -543,62 +344,55 @@ export function BulkImportPage({ onBack }: BulkImportPageProps) {
                 </tr>
               </thead>
               <tbody>
-                {rows.map((row, idx) => (
-                  <tr
-                    key={idx}
-                    className={cn(
-                      "border-t",
-                      (row.status === "invalid" || row.status === "error") && "bg-red-50/60",
-                      row.status === "success" && "bg-emerald-50/60"
-                    )}
-                  >
-                    <td className="px-4 py-3 text-muted-foreground">{idx + 1}</td>
-
-                    {row.type === "player" ? (
-                      <>
-                        <td className="px-4 py-3 font-medium">
-                          {row.name || <span className="text-muted-foreground italic">empty</span>}
+                {rows.map((row, idx) => {
+                  const fields = strategy.getDisplayFields(row)
+                  return (
+                    <tr
+                      key={idx}
+                      className={cn(
+                        "border-t",
+                        (row.status === "invalid" || row.status === "error") && "bg-red-50/60",
+                        row.status === "success" && "bg-emerald-50/60"
+                      )}
+                    >
+                      <td className="px-4 py-3 text-muted-foreground">{idx + 1}</td>
+                      {fields.map((val, colIdx) => (
+                        <td
+                          key={colIdx}
+                          className={cn("px-4 py-3", colIdx === 0 && "font-medium")}
+                        >
+                          {colIdx === 0 && !val ? (
+                            <span className="text-muted-foreground italic">empty</span>
+                          ) : (
+                            val || "—"
+                          )}
                         </td>
-                        <td className="px-4 py-3">{row.age || "—"}</td>
-                        <td className="px-4 py-3">{row.position || "—"}</td>
-                        <td className="px-4 py-3">{row.number || "—"}</td>
-                      </>
-                    ) : (
-                      <>
-                        <td className="px-4 py-3 font-medium">
-                          {row.name || <span className="text-muted-foreground italic">empty</span>}
-                        </td>
-                        <td className="px-4 py-3">{row.country || "—"}</td>
-                        <td className="px-4 py-3">{row.city || "—"}</td>
-                        <td className="px-4 py-3 font-mono text-xs">{row.abbreviation || "—"}</td>
-                        <td className="px-4 py-3">{row.state || "—"}</td>
-                      </>
-                    )}
-
-                    <td className="px-4 py-3">
-                      <div className="flex flex-col gap-1 min-w-[120px]">
-                        <StatusBadge status={row.status} />
-                        {row.errors.length > 0 && (
-                          <ul className="text-xs text-red-600 space-y-0.5 mt-0.5">
-                            {row.errors.map((e, i) => (
-                              <li key={i}>· {e}</li>
-                            ))}
-                          </ul>
-                        )}
-                        {row.apiError && (
-                          <p className="text-xs text-red-600 mt-0.5">· {row.apiError}</p>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                ))}
+                      ))}
+                      <td className="px-4 py-3">
+                        <div className="flex flex-col gap-1 min-w-[120px]">
+                          <StatusBadge status={row.status} />
+                          {row.errors.length > 0 && (
+                            <ul className="text-xs text-red-600 space-y-0.5 mt-0.5">
+                              {row.errors.map((e, i) => (
+                                <li key={i}>· {e}</li>
+                              ))}
+                            </ul>
+                          )}
+                          {row.apiError && (
+                            <p className="text-xs text-red-600 mt-0.5">· {row.apiError}</p>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  )
+                })}
               </tbody>
             </table>
           </div>
         </div>
       )}
 
-      {/* ── Import result summary ── */}
+      {/* ── Resumen final ── */}
       {isDone && (
         <div
           className={cn(
