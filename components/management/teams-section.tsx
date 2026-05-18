@@ -1,5 +1,10 @@
 "use client"
 
+// SRP: este componente tiene una única responsabilidad — renderizar la UI de
+// gestión de equipos y orquestar los hooks especializados.
+// La lógica de plantilla (squad) vive en useSquadManager.
+// La validación vive en teamValidator.
+
 import { useState } from "react"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
@@ -10,11 +15,13 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Field, FieldLabel, FieldGroup, FieldError } from "@/components/ui/field"
 import { Search } from "lucide-react"
 import type { Team, Player, ITeamsMutations } from "@/lib/api"
+import { ENTITY_STATES } from "@/lib/api"
 import { SkeletonRows, ErrorRow, EmptyRow } from "./table-states"
 import { useSectionState, RowActions, DeleteConfirmDialog, EditDialogFooter, stateBadgeVariant } from "./shared"
 import { LogoInput } from "@/components/ui/logo-input"
-
-const STATES = ["active", "inactive", "suspended"]
+import { RequiredMark, RequiredNote } from "../forms/shared"
+import { useSquadManager } from "@/lib/hooks/useSquadManager"
+import { validateTeamEdit } from "@/lib/validation/teamValidator"
 
 interface TeamsSectionProps {
   teams: Team[]
@@ -27,13 +34,16 @@ interface TeamsSectionProps {
 }
 
 export function TeamsSection({ teams, players, loading, error, searchQuery, onRefresh, api }: TeamsSectionProps) {
-  const { viewItem: viewTeam, setViewItem: setViewTeam, editItem: editTeam, setEditItem: setEditTeam, deleteItem, setDeleteItem, editErrors, setEditErrors, isSaving, setIsSaving, isDeleting, setIsDeleting } = useSectionState<Team>()
+  const {
+    viewItem: viewTeam, setViewItem: setViewTeam,
+    editItem: editTeam, setEditItem: setEditTeam,
+    deleteItem, setDeleteItem,
+    editErrors, setEditErrors,
+    isSaving, setIsSaving,
+    isDeleting, setIsDeleting,
+  } = useSectionState<Team>()
 
-  const [originalTeam, setOriginalTeam] = useState<Team | null>(null)
-  const [stagedPlayers, setStagedPlayers] = useState<Player[]>([])
-  const [stagedPlayerIds, setStagedPlayerIds] = useState<Set<string>>(new Set())
-  const [playerSearch, setPlayerSearch] = useState("")
-  const [showUnsavedWarning, setShowUnsavedWarning] = useState(false)
+  const squad = useSquadManager(players)
 
   const filtered = teams.filter((t) =>
     t.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -43,86 +53,46 @@ export function TeamsSection({ teams, players, loading, error, searchQuery, onRe
 
   const squadOf = (team: Team) => players.filter((p) => String(p.team_id) === String(team.id))
 
-  const isValidLogoValue = (s: string): boolean => {
-    if (!s) return true
-    if (s.startsWith("/uploads/")) return true
-    try { new URL(s); return true } catch { return false }
-  }
-
-  const hasUnsavedChanges = (): boolean => {
-    if (!editTeam || !originalTeam) return false
-    if (stagedPlayers.length > 0) return true
-    return (
-      editTeam.name !== originalTeam.name ||
-      editTeam.country !== originalTeam.country ||
-      editTeam.city !== originalTeam.city ||
-      editTeam.abbreviation !== originalTeam.abbreviation ||
-      editTeam.state !== originalTeam.state ||
-      (editTeam.logo ?? "") !== (originalTeam.logo ?? "")
-    )
-  }
-
   const openEdit = (team: Team) => {
     setEditErrors({})
-    setStagedPlayers([])
-    setStagedPlayerIds(new Set())
-    setPlayerSearch("")
-    setOriginalTeam({ ...team })
     setEditTeam({ ...team })
+    squad.openEdit(team)
   }
 
   const closeEdit = () => {
     setEditTeam(null)
-    setOriginalTeam(null)
-    setStagedPlayers([])
-    setStagedPlayerIds(new Set())
-    setPlayerSearch("")
-    setShowUnsavedWarning(false)
+    squad.resetSquad()
   }
 
   const handleCloseAttempt = () => {
     if (isSaving) return
-    if (hasUnsavedChanges()) {
-      setShowUnsavedWarning(true)
+    if (squad.hasUnsavedChanges(editTeam)) {
+      squad.setShowUnsavedWarning(true)
     } else {
       closeEdit()
     }
   }
 
-  const handleAddPlayer = (playerId: string) => {
-    if (!playerId || stagedPlayerIds.has(playerId)) return
-    const player = players.find((p) => String(p.id) === playerId)
-    if (!player) return
-    setStagedPlayers((prev) => [...prev, player])
-    setStagedPlayerIds((prev) => new Set([...prev, playerId]))
-    setPlayerSearch("")
-  }
-
   const handleSave = async () => {
     if (!editTeam) return
-    const errors: Record<string, string> = {}
-    if (!editTeam.name.trim()) errors.name = "Name is required"
-    if (!editTeam.country.trim()) errors.country = "Country is required"
-    if (!editTeam.city.trim()) errors.city = "City is required"
-    if (editTeam.logo && !isValidLogoValue(editTeam.logo)) errors.logo = "The logo link doesn't look like a valid web address"
+    const errors = validateTeamEdit(editTeam)
     if (Object.keys(errors).length > 0) { setEditErrors(errors); return }
 
     setIsSaving(true)
     try {
       await api.update(editTeam.id, editTeam)
 
-      if (stagedPlayers.length > 0) {
+      if (squad.stagedPlayers.length > 0) {
         const results = await Promise.allSettled(
-          stagedPlayers.map((p) => api.addPlayer(editTeam.id, String(p.id)))
+          squad.stagedPlayers.map((p) => api.addPlayer(editTeam.id, String(p.id)))
         )
         const failedIndices = results
           .map((r, i) => (r.status === "rejected" ? i : -1))
           .filter((i) => i !== -1)
 
         if (failedIndices.length > 0) {
-          const stillStaged = failedIndices.map((i) => stagedPlayers[i])
-          setStagedPlayers(stillStaged)
-          setStagedPlayerIds(new Set(stillStaged.map((p) => String(p.id))))
+          const failedPlayers = failedIndices.map((i) => squad.stagedPlayers[i])
+          squad.setStagedAfterFailure(failedPlayers)
           const reason = (results[failedIndices[0]] as PromiseRejectedResult).reason
           const msg = reason instanceof Error ? reason.message : String(reason)
           setEditErrors({ _global: `${failedIndices.length} player(s) could not be added: ${msg}` })
@@ -152,22 +122,7 @@ export function TeamsSection({ teams, players, loading, error, searchQuery, onRe
     }
   }
 
-  // Computed values for the edit dialog
-  const existingSquad = editTeam ? squadOf(editTeam) : []
-  const existingIds = new Set(existingSquad.map((p) => String(p.id)))
-  const currentSquad = [
-    ...existingSquad,
-    ...stagedPlayers.filter((p) => !existingIds.has(String(p.id))),
-  ]
-  const unassignedPlayers = players.filter(
-    (p) => !p.team_id && !stagedPlayerIds.has(String(p.id))
-  )
-  const filteredUnassigned = unassignedPlayers.filter(
-    (p) =>
-      playerSearch === "" ||
-      p.name.toLowerCase().includes(playerSearch.toLowerCase()) ||
-      p.position.toLowerCase().includes(playerSearch.toLowerCase())
-  )
+  const { currentSquad, unassignedPlayers, filteredUnassigned } = squad.getSquadInfo(editTeam)
 
   return (
     <>
@@ -175,11 +130,11 @@ export function TeamsSection({ teams, players, loading, error, searchQuery, onRe
         <Table>
           <TableHeader>
             <TableRow>
-                <TableHead className="px-20">Name</TableHead>
-                <TableHead className="hidden md:table-cell px-20">Country</TableHead>
-                <TableHead className="hidden sm:table-cell px-20">City</TableHead>
-                <TableHead className="px-20">State</TableHead>
-                <TableHead className="text-right px-20">Actions</TableHead>
+              <TableHead className="px-20">Name</TableHead>
+              <TableHead className="hidden md:table-cell px-20">Country</TableHead>
+              <TableHead className="hidden sm:table-cell px-20">City</TableHead>
+              <TableHead className="px-20">State</TableHead>
+              <TableHead className="text-right px-20">Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -187,16 +142,16 @@ export function TeamsSection({ teams, players, loading, error, searchQuery, onRe
               : error ? <ErrorRow cols={5} message={error} onRetry={onRefresh} />
               : filtered.length === 0 ? <EmptyRow cols={5} message={searchQuery ? "No teams match your search" : "No teams found"} />
               : filtered.map((team) => (
-              <TableRow key={team.id}>
-                    <TableCell className="font-medium px-20">
-                      {team.name}
-                      <span className="ml-10 text-muted-foreground text-xs">({team.abbreviation})</span>
-                    </TableCell>
-                    <TableCell className="hidden md:table-cell px-20">{team.country}</TableCell>
-                    <TableCell className="hidden sm:table-cell px-20">{team.city}</TableCell>
-                    <TableCell className="px-20">
-                      <Badge variant={stateBadgeVariant(team.state)}>{team.state}</Badge>
-                    </TableCell>
+                <TableRow key={team.id}>
+                  <TableCell className="font-medium px-20">
+                    {team.name}
+                    <span className="ml-10 text-muted-foreground text-xs">({team.abbreviation})</span>
+                  </TableCell>
+                  <TableCell className="hidden md:table-cell px-20">{team.country}</TableCell>
+                  <TableCell className="hidden sm:table-cell px-20">{team.city}</TableCell>
+                  <TableCell className="px-20">
+                    <Badge variant={stateBadgeVariant(team.state)}>{team.state}</Badge>
+                  </TableCell>
                   <TableCell className="text-right px-2">
                     <RowActions
                       onView={() => setViewTeam(team)}
@@ -211,7 +166,7 @@ export function TeamsSection({ teams, players, loading, error, searchQuery, onRe
         </Table>
       </div>
 
-      {/* View Dialog */}
+      {/* Diálogo de vista */}
       <Dialog open={!!viewTeam} onOpenChange={(open) => !open && setViewTeam(null)}>
         <DialogContent className="sm:max-w-2xl">
           <DialogHeader>
@@ -262,7 +217,7 @@ export function TeamsSection({ teams, players, loading, error, searchQuery, onRe
         </DialogContent>
       </Dialog>
 
-      {/* Edit Dialog */}
+      {/* Diálogo de edición */}
       <Dialog open={!!editTeam} onOpenChange={(open) => { if (!open) handleCloseAttempt() }}>
         <DialogContent className="sm:max-w-xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
@@ -270,10 +225,11 @@ export function TeamsSection({ teams, players, loading, error, searchQuery, onRe
             <DialogDescription>Make changes to the record below</DialogDescription>
           </DialogHeader>
           {editErrors._global && <p className="text-sm text-destructive px-1">{editErrors._global}</p>}
+          <RequiredNote />
           {editTeam && (
             <FieldGroup>
               <Field>
-                <FieldLabel htmlFor="edit-team-name">Team Name</FieldLabel>
+                <FieldLabel htmlFor="edit-team-name">Team Name<RequiredMark /></FieldLabel>
                 <Input id="edit-team-name" value={editTeam.name}
                   onChange={(e) => setEditTeam({ ...editTeam, name: e.target.value })}
                   className={editErrors.name ? "border-destructive" : ""} />
@@ -281,14 +237,14 @@ export function TeamsSection({ teams, players, loading, error, searchQuery, onRe
               </Field>
               <div className="grid grid-cols-2 gap-4">
                 <Field>
-                  <FieldLabel htmlFor="edit-team-country">Country</FieldLabel>
+                  <FieldLabel htmlFor="edit-team-country">Country<RequiredMark /></FieldLabel>
                   <Input id="edit-team-country" value={editTeam.country}
                     onChange={(e) => setEditTeam({ ...editTeam, country: e.target.value })}
                     className={editErrors.country ? "border-destructive" : ""} />
                   {editErrors.country && <FieldError>{editErrors.country}</FieldError>}
                 </Field>
                 <Field>
-                  <FieldLabel htmlFor="edit-team-city">City</FieldLabel>
+                  <FieldLabel htmlFor="edit-team-city">City<RequiredMark /></FieldLabel>
                   <Input id="edit-team-city" value={editTeam.city}
                     onChange={(e) => setEditTeam({ ...editTeam, city: e.target.value })}
                     className={editErrors.city ? "border-destructive" : ""} />
@@ -306,7 +262,7 @@ export function TeamsSection({ teams, players, loading, error, searchQuery, onRe
                   <Select value={editTeam.state} onValueChange={(v) => setEditTeam({ ...editTeam, state: v })}>
                     <SelectTrigger id="edit-team-state"><SelectValue /></SelectTrigger>
                     <SelectContent>
-                      {STATES.map((s) => <SelectItem key={s} value={s}>{s.charAt(0).toUpperCase() + s.slice(1)}</SelectItem>)}
+                      {ENTITY_STATES.map((s) => <SelectItem key={s} value={s}>{s.charAt(0).toUpperCase() + s.slice(1)}</SelectItem>)}
                     </SelectContent>
                   </Select>
                 </Field>
@@ -322,7 +278,7 @@ export function TeamsSection({ teams, players, loading, error, searchQuery, onRe
                 {editErrors.logo && <FieldError>{editErrors.logo}</FieldError>}
               </Field>
 
-              {/* Squad management */}
+              {/* Gestión de plantilla */}
               <div className="space-y-2 pt-3 border-t">
                 <div className="flex items-center justify-between">
                   <p className="text-sm font-medium">
@@ -335,7 +291,7 @@ export function TeamsSection({ teams, players, loading, error, searchQuery, onRe
                   )}
                 </div>
 
-                <Select value="" onValueChange={handleAddPlayer} disabled={unassignedPlayers.length === 0}>
+                <Select value="" onValueChange={squad.handleAddPlayer} disabled={unassignedPlayers.length === 0}>
                   <SelectTrigger>
                     <SelectValue placeholder={
                       unassignedPlayers.length === 0 ? "No available players" : "Add a player..."
@@ -346,14 +302,14 @@ export function TeamsSection({ teams, players, loading, error, searchQuery, onRe
                       <Search className="mr-2 h-4 w-4 shrink-0 opacity-50" />
                       <input
                         placeholder="Search players..."
-                        value={playerSearch}
-                        onChange={(e) => setPlayerSearch(e.target.value)}
+                        value={squad.playerSearch}
+                        onChange={(e) => squad.setPlayerSearch(e.target.value)}
                         className="flex h-8 w-full rounded-md bg-transparent py-3 text-sm outline-none placeholder:text-muted-foreground"
                       />
                     </div>
                     {filteredUnassigned.length === 0 ? (
                       <div className="py-6 text-center text-sm text-muted-foreground">
-                        {playerSearch ? "No players found" : "No available players"}
+                        {squad.playerSearch ? "No players found" : "No available players"}
                       </div>
                     ) : (
                       filteredUnassigned.map((p) => (
@@ -370,7 +326,7 @@ export function TeamsSection({ teams, players, loading, error, searchQuery, onRe
                 {currentSquad.length > 0 ? (
                   <div className="grid grid-cols-2 gap-1 max-h-44 overflow-y-auto pr-0.5">
                     {currentSquad.map((p) => {
-                      const isStaged = stagedPlayerIds.has(String(p.id))
+                      const isStaged = squad.stagedPlayerIds.has(String(p.id))
                       return (
                         <div
                           key={p.id}
@@ -398,9 +354,9 @@ export function TeamsSection({ teams, players, loading, error, searchQuery, onRe
                   <p className="text-xs text-muted-foreground">No players yet. Use the dropdown above to add players.</p>
                 )}
 
-                {stagedPlayers.length > 0 && (
+                {squad.stagedPlayers.length > 0 && (
                   <p className="text-xs text-emerald-700 dark:text-emerald-400">
-                    {stagedPlayers.length} player{stagedPlayers.length > 1 ? "s" : ""} staged — click Save Changes to confirm
+                    {squad.stagedPlayers.length} player{squad.stagedPlayers.length > 1 ? "s" : ""} staged — click Save Changes to confirm
                   </p>
                 )}
               </div>
@@ -410,8 +366,8 @@ export function TeamsSection({ teams, players, loading, error, searchQuery, onRe
         </DialogContent>
       </Dialog>
 
-      {/* Unsaved changes warning */}
-      <Dialog open={showUnsavedWarning} onOpenChange={(open) => { if (!open) setShowUnsavedWarning(false) }}>
+      {/* Advertencia de cambios sin guardar */}
+      <Dialog open={squad.showUnsavedWarning} onOpenChange={(open) => { if (!open) squad.setShowUnsavedWarning(false) }}>
         <DialogContent className="sm:max-w-sm">
           <DialogHeader>
             <DialogTitle>Unsaved changes</DialogTitle>
@@ -420,7 +376,7 @@ export function TeamsSection({ teams, players, loading, error, searchQuery, onRe
             </DialogDescription>
           </DialogHeader>
           <div className="flex justify-end gap-2 pt-2">
-            <Button variant="outline" onClick={() => setShowUnsavedWarning(false)}>
+            <Button variant="outline" onClick={() => squad.setShowUnsavedWarning(false)}>
               Keep editing
             </Button>
             <Button variant="destructive" onClick={closeEdit}>

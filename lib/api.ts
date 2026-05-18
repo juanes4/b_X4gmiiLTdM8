@@ -1,5 +1,10 @@
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api"
 
+// ── Domain constants ───────────────────────────────────────────────────────────
+
+export const ENTITY_STATES = ["active", "inactive", "suspended"] as const
+export type EntityState = (typeof ENTITY_STATES)[number]
+
 // ── Types ──────────────────────────────────────────────────────────────────────
 
 export interface Team {
@@ -128,6 +133,24 @@ export interface IMatchesMutations {
 export interface ILeaguesMutations {
   update: (id: string, data: Partial<League> & { teams?: string[] }) => Promise<League>
   delete: (id: string) => Promise<{ deleted: number }>
+}
+
+// ── Hook-level API Interfaces (ISP) ────────────────────────────────────────────
+// Los hooks dependen solo de los métodos que realmente invocan.
+
+export interface IMatchesMetadata {
+  updateMetadata: (id: string, data: { scheduled_at?: string; venue?: string; referee?: string }) => Promise<Match>
+}
+
+export interface ILeaguesReader {
+  getAll: () => Promise<League[]>
+  getRounds: (id: string) => Promise<LeagueRoundsResponse>
+  getStandings: (id: string) => Promise<Standing[]>
+  advanceRound: (id: string) => Promise<{ message: string; league: League; completed: boolean }>
+}
+
+export interface IMatchesResultWriter {
+  updateResult: (id: string, payload: MatchResultPayload) => Promise<Match>
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────────

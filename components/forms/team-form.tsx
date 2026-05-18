@@ -1,5 +1,9 @@
 "use client"
 
+// SRP: este componente tiene una única responsabilidad — renderizar el formulario
+// de creación de equipo y gestionar su estado local.
+// La validación vive en teamValidator; la lógica de API en teamsApi/playersApi.
+
 import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -9,8 +13,9 @@ import { Badge } from "@/components/ui/badge"
 import { Shield, Plus, X } from "lucide-react"
 import { teamsApi, playersApi } from "@/lib/api"
 import type { Player } from "@/lib/api"
-import { FormHeader, SubmitButton } from "./shared"
+import { FormHeader, RequiredMark, RequiredNote, SubmitButton } from "./shared"
 import { LogoInput } from "@/components/ui/logo-input"
+import { validateTeamForm } from "@/lib/validation/teamValidator"
 
 const STATES = ["active", "inactive", "suspended"]
 const MIN_PLAYERS = 11
@@ -48,30 +53,10 @@ export function TeamForm({ onSuccess }: TeamFormProps) {
       .finally(() => setLoadingPlayers(false))
   }, [])
 
-  const isValidLogoValue = (s: string): boolean => {
-    if (!s) return true
-    if (s.startsWith("/uploads/")) return true
-    try { new URL(s); return true } catch { return false }
-  }
-
-  const validateForm = (): boolean => {
-    const e: Record<string, string> = {}
-    if (!formData.name.trim()) e.name = "Please enter the team name"
-    else if (formData.name.trim().length < 2) e.name = "The team name must be at least 2 characters long"
-    if (!formData.country.trim()) e.country = "Please enter the country"
-    if (!formData.city.trim()) e.city = "Please enter the city"
-    if (!formData.abbreviation.trim()) e.abbreviation = "Please enter an abbreviation (e.g. FCB)"
-    else if (formData.abbreviation.length > 5) e.abbreviation = "The abbreviation cannot be longer than 5 characters"
-    if (formData.logo && !isValidLogoValue(formData.logo)) e.logo = "The logo link doesn't look like a valid web address"
-    if (!formData.state) e.state = "Please select a status for the team"
-    if (formData.players.length < MIN_PLAYERS) e.players = `You need to select ${MIN_PLAYERS} players (${formData.players.length} selected so far)`
-    setErrors(e)
-    return Object.keys(e).length === 0
-  }
-
   const handleSubmit = async (ev: React.FormEvent) => {
     ev.preventDefault()
-    if (!validateForm()) return
+    const e = validateTeamForm(formData)
+    if (Object.keys(e).length > 0) { setErrors(e); return }
     setIsSubmitting(true)
     try {
       await teamsApi.create({
@@ -91,7 +76,7 @@ export function TeamForm({ onSuccess }: TeamFormProps) {
         ? "A team with this name already exists. Please choose a different name."
         : msg.toLowerCase().includes("already assigned")
           ? "One or more selected players is already on another team."
-          : "Something went wrong while saving the team. Please try again."
+          : msg || "Something went wrong while saving the team. Please try again."
       setErrors({ _global: friendly })
     } finally {
       setIsSubmitting(false)
@@ -126,6 +111,7 @@ export function TeamForm({ onSuccess }: TeamFormProps) {
   return (
     <form onSubmit={handleSubmit}>
       <FormHeader icon={<Shield className="h-6 w-6 text-primary" />} title="Add New Team" description="Enter the team details below" />
+      <RequiredNote />
 
       {errors._global && <p className="text-sm text-destructive mb-4">{errors._global}</p>}
 
@@ -133,7 +119,7 @@ export function TeamForm({ onSuccess }: TeamFormProps) {
         <div className="space-y-4">
           <p className="text-sm font-medium text-muted-foreground">Basic Information</p>
           <Field>
-            <FieldLabel htmlFor="team-name">Team Name</FieldLabel>
+            <FieldLabel htmlFor="team-name">Team Name<RequiredMark /></FieldLabel>
             <Input id="team-name" placeholder="Enter team name" value={formData.name}
               onChange={(e) => handleInputChange("name", e.target.value)}
               className={errors.name ? "border-destructive" : ""} />
@@ -141,14 +127,14 @@ export function TeamForm({ onSuccess }: TeamFormProps) {
           </Field>
           <div className="grid grid-cols-2 gap-4">
             <Field>
-              <FieldLabel htmlFor="team-country">Country</FieldLabel>
+              <FieldLabel htmlFor="team-country">Country<RequiredMark /></FieldLabel>
               <Input id="team-country" placeholder="Country" value={formData.country}
                 onChange={(e) => handleInputChange("country", e.target.value)}
                 className={errors.country ? "border-destructive" : ""} />
               {errors.country && <FieldError>{errors.country}</FieldError>}
             </Field>
             <Field>
-              <FieldLabel htmlFor="team-city">City</FieldLabel>
+              <FieldLabel htmlFor="team-city">City<RequiredMark /></FieldLabel>
               <Input id="team-city" placeholder="City" value={formData.city}
                 onChange={(e) => handleInputChange("city", e.target.value)}
                 className={errors.city ? "border-destructive" : ""} />
@@ -157,14 +143,14 @@ export function TeamForm({ onSuccess }: TeamFormProps) {
           </div>
           <div className="grid grid-cols-2 gap-4">
             <Field>
-              <FieldLabel htmlFor="team-abbreviation">Abbreviation</FieldLabel>
+              <FieldLabel htmlFor="team-abbreviation">Abbreviation<RequiredMark /></FieldLabel>
               <Input id="team-abbreviation" placeholder="e.g. FCB" maxLength={5} value={formData.abbreviation}
                 onChange={(e) => handleInputChange("abbreviation", e.target.value.toUpperCase())}
                 className={errors.abbreviation ? "border-destructive" : ""} />
               {errors.abbreviation && <FieldError>{errors.abbreviation}</FieldError>}
             </Field>
             <Field>
-              <FieldLabel htmlFor="team-state">State</FieldLabel>
+              <FieldLabel htmlFor="team-state">State<RequiredMark /></FieldLabel>
               <Select value={formData.state} onValueChange={(v) => handleInputChange("state", v)}>
                 <SelectTrigger id="team-state" className={errors.state ? "border-destructive" : ""}>
                   <SelectValue placeholder="Select state" />
@@ -192,7 +178,7 @@ export function TeamForm({ onSuccess }: TeamFormProps) {
 
         <div className="space-y-4 pt-6 border-t">
           <p className="text-sm font-medium text-muted-foreground">
-            Players{" "}
+            Players<RequiredMark />{" "}
             <span className={formData.players.length >= MIN_PLAYERS ? "text-emerald-600" : "text-muted-foreground"}>
               ({formData.players.length} — min. {MIN_PLAYERS})
             </span>

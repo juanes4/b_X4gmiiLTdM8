@@ -9,7 +9,7 @@ import { Badge } from "@/components/ui/badge"
 import { Medal, X, Search, ChevronDown, ChevronUp, Calendar } from "lucide-react"
 import { teamsApi, leaguesApi } from "@/lib/api"
 import type { Team } from "@/lib/api"
-import { FormHeader, SubmitButton } from "./shared"
+import { FormHeader, RequiredMark, RequiredNote, SubmitButton } from "./shared"
 
 interface LeagueFormProps {
   onSuccess: (title: string, subtitle: string) => void
@@ -63,7 +63,7 @@ export function LeagueForm({ onSuccess }: LeagueFormProps) {
       const friendly =
         msg.toLowerCase().includes("unique") || msg.toLowerCase().includes("already exists")
           ? "A league with this name already exists."
-          : "Something went wrong while saving the league. Please try again."
+          : msg || "Something went wrong while saving the league. Please try again."
       setErrors({ _global: friendly })
     } finally {
       setIsSubmitting(false)
@@ -157,12 +157,13 @@ export function LeagueForm({ onSuccess }: LeagueFormProps) {
         title="Add New League"
         description="Create a round-robin league — the full schedule is generated automatically"
       />
+      <RequiredNote />
 
       {errors._global && <p className="text-sm text-destructive mb-4">{errors._global}</p>}
 
       <FieldGroup>
         <Field>
-          <FieldLabel htmlFor="league-name">League Name</FieldLabel>
+          <FieldLabel htmlFor="league-name">League Name<RequiredMark /></FieldLabel>
           <Input
             id="league-name"
             placeholder="e.g. Champions League 2025"
@@ -210,7 +211,7 @@ export function LeagueForm({ onSuccess }: LeagueFormProps) {
         <div className="space-y-3 pt-6 border-t">
           <p className="text-sm font-medium text-muted-foreground">Teams</p>
           <Field>
-            <FieldLabel htmlFor="league-add-team">Add Team</FieldLabel>
+            <FieldLabel htmlFor="league-add-team">Teams<RequiredMark /></FieldLabel>
             <Select
               value=""
               onValueChange={(v) => { addTeam(v); setTeamSearch("") }}

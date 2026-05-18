@@ -7,10 +7,12 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Field, FieldLabel, FieldGroup, FieldError } from "@/components/ui/field"
 import type { League, ILeaguesMutations } from "@/lib/api"
+import { ENTITY_STATES } from "@/lib/api"
+import { validateLeagueEdit } from "@/lib/validation/leagueValidator"
 import { SkeletonRows, ErrorRow, EmptyRow } from "./table-states"
 import { useSectionState, RowActions, DeleteConfirmDialog, EditDialogFooter, stateBadgeVariant } from "./shared"
+import { RequiredMark, RequiredNote } from "../forms/shared"
 
-const STATES = ["active", "inactive", "suspended"]
 
 interface LeaguesSectionProps {
   leagues: League[]
@@ -30,8 +32,7 @@ export function LeaguesSection({ leagues, loading, error, searchQuery, onRefresh
 
   const handleSave = async () => {
     if (!editLeague) return
-    const errors: Record<string, string> = {}
-    if (!editLeague.name.trim()) errors.name = "Name is required"
+    const errors = validateLeagueEdit(editLeague)
     if (Object.keys(errors).length > 0) { setEditErrors(errors); return }
 
     setIsSaving(true)
@@ -127,10 +128,11 @@ export function LeaguesSection({ leagues, loading, error, searchQuery, onRefresh
             <DialogDescription>Make changes to the record below</DialogDescription>
           </DialogHeader>
           {editErrors._global && <p className="text-sm text-destructive px-1">{editErrors._global}</p>}
+          <RequiredNote />
           {editLeague && (
             <FieldGroup>
               <Field>
-                <FieldLabel htmlFor="edit-league-name">League Name</FieldLabel>
+                <FieldLabel htmlFor="edit-league-name">League Name<RequiredMark /></FieldLabel>
                 <Input id="edit-league-name" value={editLeague.name}
                   onChange={(e) => setEditLeague({ ...editLeague, name: e.target.value })}
                   className={editErrors.name ? "border-destructive" : ""} />
@@ -147,7 +149,7 @@ export function LeaguesSection({ leagues, loading, error, searchQuery, onRefresh
                   <Select value={editLeague.state} onValueChange={(v) => setEditLeague({ ...editLeague, state: v })}>
                     <SelectTrigger id="edit-league-state"><SelectValue /></SelectTrigger>
                     <SelectContent>
-                      {STATES.map((s) => <SelectItem key={s} value={s}>{s.charAt(0).toUpperCase() + s.slice(1)}</SelectItem>)}
+                      {ENTITY_STATES.map((s) => <SelectItem key={s} value={s}>{s.charAt(0).toUpperCase() + s.slice(1)}</SelectItem>)}
                     </SelectContent>
                   </Select>
                 </Field>

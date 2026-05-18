@@ -19,6 +19,18 @@ export function FormHeader({ icon, title, description }: FormHeaderProps) {
   )
 }
 
+export function RequiredMark() {
+  return <span className="text-destructive font-medium ml-0.5" aria-hidden="true">*</span>
+}
+
+export function RequiredNote() {
+  return (
+    <p className="text-xs text-muted-foreground mb-4">
+      <span className="text-destructive font-medium">*</span> Required fields
+    </p>
+  )
+}
+
 interface SubmitButtonProps {
   isSubmitting: boolean
   icon: React.ReactNode
